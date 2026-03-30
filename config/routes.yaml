@@ -1,0 +1,6 @@
+id_sign_image:
+    path: '/_image/{path}'
+    controller: IdSign\ImageBundle\Controller\ImageController
+    methods: [GET]
+    requirements:
+        path: '.+'

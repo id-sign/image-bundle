@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request: ~
+  push:
+    branches: [main]
+
+jobs:
+  cs-fixer:
+    name: PHP CS Fixer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+      - run: composer install --no-progress
+      - run: vendor/bin/php-cs-fixer fix --dry-run --diff
+
+  phpstan:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: imagick
+      - run: composer install --no-progress
+      - run: vendor/bin/phpstan analyse
+
+  tests:
+    name: PHPUnit (PHP ${{ matrix.php }}, Symfony ${{ matrix.symfony }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.4'
+            symfony: '7.4.*'
+          - php: '8.4'
+            symfony: '8.0.*'
+          - php: '8.5'
+            symfony: '7.4.*'
+          - php: '8.5'
+            symfony: '8.0.*'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: imagick
+      - run: composer config extra.symfony.require "${{ matrix.symfony }}"
+      - run: composer install --no-progress
+      - run: vendor/bin/phpunit

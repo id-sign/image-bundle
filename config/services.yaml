@@ -1,0 +1,81 @@
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    # Source
+    IdSign\ImageBundle\Source\LocalFilesystemSource:
+        arguments:
+            $basePath: '%kernel.project_dir%/data'
+
+    IdSign\ImageBundle\Source\ImageSourceInterface:
+        alias: IdSign\ImageBundle\Source\LocalFilesystemSource
+
+    # Cache
+    IdSign\ImageBundle\Cache\CachePathResolver: ~
+
+    IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage:
+        arguments:
+            $cacheDirectory: '%id_sign_image.cache.path%'
+            $ttl: '%id_sign_image.cache.ttl%'
+
+    IdSign\ImageBundle\Cache\CacheStorageInterface:
+        alias: IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage
+
+    # Services
+    IdSign\ImageBundle\Service\ImagickProcessor: ~
+
+    IdSign\ImageBundle\Service\ImageProcessorInterface:
+        alias: IdSign\ImageBundle\Service\ImagickProcessor
+
+    IdSign\ImageBundle\Service\FormatNegotiator:
+        arguments:
+            $configuredFormats: '%id_sign_image.formats%'
+
+    IdSign\ImageBundle\Service\BlurPlaceholderGenerator:
+        arguments:
+            $cacheDirectory: '%id_sign_image.cache.path%'
+            $blurSize: '%id_sign_image.blur.size%'
+            $blurQuality: '%id_sign_image.blur.quality%'
+
+    IdSign\ImageBundle\Service\ImageMetadataReader:
+        arguments:
+            $cacheDirectory: '%id_sign_image.cache.path%'
+
+    IdSign\ImageBundle\Service\SrcsetGenerator:
+        arguments:
+            $deviceSizes: '%id_sign_image.device_sizes%'
+            $routePrefix: '%id_sign_image.route_prefix%'
+
+    IdSign\ImageBundle\Service\ImageUrlGenerator:
+        arguments:
+            $routePrefix: '%id_sign_image.route_prefix%'
+
+    IdSign\ImageBundle\Service\UrlSigner:
+        arguments:
+            $secret: '%kernel.secret%'
+
+    IdSign\ImageBundle\Service\WatermarkRegistry:
+        arguments:
+            $watermarks: '%id_sign_image.watermarks%'
+
+    # Twig Component
+    IdSign\ImageBundle\Twig\Component\ImageComponent:
+        arguments:
+            $defaultQuality: '%id_sign_image.default_quality%'
+            $formats: '%id_sign_image.formats%'
+            $routePrefix: '%id_sign_image.route_prefix%'
+            $blurEnabled: '%id_sign_image.blur.enabled%'
+            $autoDimensions: '%id_sign_image.auto_dimensions%'
+            $defaultWatermark: '%id_sign_image.default_watermark%'
+
+    # Command
+    IdSign\ImageBundle\Command\PurgeCacheCommand:
+        arguments:
+            $cacheDirectory: '%id_sign_image.cache.path%'
+
+    # Controller
+    IdSign\ImageBundle\Controller\ImageController:
+        arguments:
+            $tmpDir: '%id_sign_image.tmp_dir%'
+        tags: ['controller.service_arguments']

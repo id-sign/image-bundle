@@ -1,0 +1,103 @@
+<?php
+
+declare(strict_types=1);
+
+namespace IdSign\ImageBundle\DependencyInjection;
+
+use Symfony\Component\Config\Definition\Builder\TreeBuilder;
+use Symfony\Component\Config\Definition\ConfigurationInterface;
+
+class Configuration implements ConfigurationInterface
+{
+    public function getConfigTreeBuilder(): TreeBuilder
+    {
+        $treeBuilder = new TreeBuilder('id_sign_image');
+
+        $treeBuilder->getRootNode()
+            ->children()
+                ->arrayNode('device_sizes')
+                    ->integerPrototype()->end()
+                    ->defaultValue([640, 750, 828, 1080, 1200, 1920, 2048, 3840])
+                ->end()
+                ->integerNode('default_quality')
+                    ->defaultValue(80)
+                ->end()
+                ->arrayNode('formats')
+                    ->scalarPrototype()->end()
+                    ->defaultValue(['avif', 'webp'])
+                ->end()
+                ->arrayNode('cache')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->integerNode('ttl')
+                            ->defaultValue(2592000)
+                        ->end()
+                        ->scalarNode('path')
+                            ->defaultValue('%kernel.project_dir%/public/_image')
+                        ->end()
+                    ->end()
+                ->end()
+                ->arrayNode('blur')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->booleanNode('enabled')
+                            ->defaultFalse()
+                        ->end()
+                        ->integerNode('size')
+                            ->defaultValue(10)
+                        ->end()
+                        ->integerNode('quality')
+                            ->defaultValue(30)
+                        ->end()
+                    ->end()
+                ->end()
+                ->scalarNode('default_watermark')
+                    ->defaultNull()
+                    ->info('Default watermark profile name applied to all images (null = no watermark)')
+                ->end()
+                ->arrayNode('watermarks')
+                    ->useAttributeAsKey('name')
+                    ->arrayPrototype()
+                        ->children()
+                            ->scalarNode('path')
+                                ->isRequired()
+                            ->end()
+                            ->enumNode('position')
+                                ->values(['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'])
+                                ->defaultValue('bottom-right')
+                            ->end()
+                            ->integerNode('opacity')
+                                ->defaultValue(50)
+                                ->min(0)->max(100)
+                            ->end()
+                            ->integerNode('size')
+                                ->defaultValue(20)
+                                ->info('Watermark width as percentage of output image width')
+                            ->end()
+                            ->integerNode('margin')
+                                ->defaultValue(10)
+                                ->info('Margin from edge in pixels')
+                            ->end()
+                        ->end()
+                    ->end()
+                ->end()
+                ->booleanNode('auto_dimensions')
+                    ->defaultFalse()
+                ->end()
+                ->scalarNode('tmp_dir')
+                    ->defaultNull()
+                    ->info('Temporary directory for image processing. Defaults to sys_get_temp_dir().')
+                ->end()
+                ->enumNode('serve_mode')
+                    ->values(['controller', 'public'])
+                    ->defaultValue('public')
+                ->end()
+                ->scalarNode('route_prefix')
+                    ->defaultValue('/_image')
+                ->end()
+            ->end()
+        ;
+
+        return $treeBuilder;
+    }
+}

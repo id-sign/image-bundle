@@ -1,0 +1,38 @@
+{
+    "name": "idsign/image-bundle",
+    "description": "Symfony bundle for automatic image optimization — resize, format negotiation (AVIF/WebP), srcset, blur placeholder, HTTP cache headers.",
+    "version": "0.1.0",
+    "type": "symfony-bundle",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "ext-imagick": "*",
+        "symfony/http-kernel": "^7.4|^8.0",
+        "symfony/http-foundation": "^7.4|^8.0",
+        "symfony/dependency-injection": "^7.4|^8.0",
+        "symfony/config": "^7.4|^8.0",
+        "symfony/routing": "^7.4|^8.0",
+        "symfony/console": "^7.4|^8.0",
+        "symfony/mime": "^7.4|^8.0",
+        "symfony/ux-twig-component": "^2.25"
+    },
+    "require-dev": {
+        "friendsofphp/php-cs-fixer": "^3.94",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-symfony": "^2.0",
+        "phpunit/phpunit": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "IdSign\\ImageBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "IdSign\\ImageBundle\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
