@@ -1,6 +1,6 @@
 # ImageBundle — Symfony Bundle for Image Optimization
 
-- **Composer:** `idsign/image-bundle`
+- **Composer:** `id-sign/image-bundle`
 - **Namespace:** `IdSign\ImageBundle`
 - **Bundle class:** `IdSign\ImageBundle\IdSignImageBundle`
 
@@ -10,7 +10,7 @@ Symfony bundle providing a `<twig:Image>` component that generates `<picture>` t
 
 ## Requirements
 
-- PHP 8.4+
+- PHP 8.2+
 - Symfony 7.4+ | 8.0+
 - ext-imagick
 - `symfony/ux-twig-component` (bundle dependency)

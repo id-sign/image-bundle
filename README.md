@@ -6,14 +6,24 @@ Built on ext-imagick with no additional dependencies — zero CLI tools, no thir
 
 ## Requirements
 
-- PHP 8.4+
+- PHP 8.2+
 - Symfony 7.4+
 - ext-imagick
 
 ## Installation
 
 ```bash
-composer require idsign/image-bundle
+composer require id-sign/image-bundle
+```
+
+If Symfony Flex doesn't register the bundle automatically, add it to `config/bundles.php`:
+
+```php
+// config/bundles.php
+return [
+    // ...
+    IdSign\ImageBundle\IdSignImageBundle::class => ['all' => true],
+];
 ```
 
 Import the bundle routes:

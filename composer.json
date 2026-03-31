@@ -1,11 +1,11 @@
 {
-    "name": "idsign/image-bundle",
+    "name": "id-sign/image-bundle",
     "description": "Symfony bundle for automatic image optimization — resize, format negotiation (AVIF/WebP), srcset, blur placeholder, HTTP cache headers.",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "type": "symfony-bundle",
     "license": "MIT",
     "require": {
-        "php": ">=8.4",
+        "php": ">=8.2",
         "ext-imagick": "*",
         "symfony/http-kernel": "^7.4|^8.0",
         "symfony/http-foundation": "^7.4|^8.0",
