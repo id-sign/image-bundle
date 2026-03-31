@@ -410,6 +410,18 @@ vendor/bin/phpstan analyse
 vendor/bin/php-cs-fixer fix
 ```
 
+### Docker test matrix
+
+Run tests across all supported PHP versions using Docker:
+
+```bash
+make test-matrix           # Run tests on PHP 8.2, 8.3, 8.4, 8.5
+make test                  # Run tests on PHP 8.4 (default)
+make test PHP_VERSION=8.2  # Run tests on a specific PHP version
+make phpstan               # Run PHPStan analysis
+make cs-fix                # Run PHP CS Fixer (dry-run)
+```
+
 ## License
 
 MIT
