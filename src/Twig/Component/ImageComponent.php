@@ -24,6 +24,11 @@ class ImageComponent
     public ?int $quality = null;
 
     /**
+     * Auto-calculate height from source aspect ratio. Null = use global config.
+     */
+    public ?bool $autoDimensions = null;
+
+    /**
      * Watermark profile name, false to disable, or null for global default.
      */
     public string|false|null $watermark = null;
@@ -42,7 +47,7 @@ class ImageComponent
         private readonly array $formats,
         private readonly string $routePrefix,
         private readonly bool $blurEnabled,
-        private readonly bool $autoDimensions,
+        private readonly bool $globalAutoDimensions,
         private readonly ?string $defaultWatermark,
     ) {
     }
@@ -58,7 +63,9 @@ class ImageComponent
             default => $this->defaultWatermark,
         };
 
-        if (null === $this->height && $this->autoDimensions && !$this->isSvg()) {
+        $useAutoDimensions = $this->autoDimensions ?? $this->globalAutoDimensions;
+
+        if (null === $this->height && $useAutoDimensions && !$this->isSvg()) {
             $dimensions = $this->metadataReader->getDimensions($this->src);
             if ($dimensions['width'] > 0) {
                 $this->resolvedHeight = (int) round($dimensions['height'] * $this->width / $dimensions['width']);
@@ -81,12 +88,7 @@ class ImageComponent
 
     public function getFallbackFormat(): string
     {
-        $ext = strtolower(pathinfo($this->src, \PATHINFO_EXTENSION));
-
-        return match ($ext) {
-            'jpg' => 'jpeg',
-            default => $ext,
-        };
+        return FormatNegotiator::getFallbackFormat(pathinfo($this->src, \PATHINFO_EXTENSION));
     }
 
     /**

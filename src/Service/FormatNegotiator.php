@@ -18,7 +18,7 @@ class FormatNegotiator
         'jpg' => 'jpeg',
         'jpeg' => 'jpeg',
         'png' => 'png',
-        'gif' => 'gif',
+        'gif' => 'jpeg',
         'tiff' => 'jpeg',
         'tif' => 'jpeg',
         'heic' => 'jpeg',
@@ -48,6 +48,14 @@ class FormatNegotiator
             }
         }
 
+        return self::getFallbackFormat($sourceExtension);
+    }
+
+    /**
+     * Get the web-safe fallback format for a source file extension.
+     */
+    public static function getFallbackFormat(string $sourceExtension): string
+    {
         return self::EXTENSION_TO_FORMAT[strtolower($sourceExtension)] ?? 'jpeg';
     }
 

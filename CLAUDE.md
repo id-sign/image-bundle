@@ -144,7 +144,7 @@ Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HM
 
 `ImageComponent` is a `symfony/ux-twig-component` class component with `#[AsTwigComponent]`.
 
-**Props:** `src`, `width`, `height` (optional), `fit` (optional), `blur` (optional bool), `quality` (optional int), `watermark` (optional string|false|null)
+**Props:** `src`, `width`, `height` (optional), `fit` (optional), `blur` (optional bool), `quality` (optional int), `autoDimensions` (optional bool|null), `watermark` (optional string|false|null)
 
 **Watermark prop resolution:**
 - `watermark="profile_name"` — use this specific profile
@@ -158,7 +158,7 @@ Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HM
 **SVG passthrough:** `.svg` files render as plain `<img src="/path.svg">` — no `<picture>`, no processing, no srcset, no blur.
 
 **I/O during render (component `mount()`):**
-- `auto_dimensions` enabled + no `height` prop: reads image metadata via `ImageMetadataReader` (cache hit: ~5-10 μs file read, cache miss: ~10-30 ms Imagick)
+- `auto_dimensions` enabled (globally or via `autoDimensions` prop) + no `height` prop: reads image metadata via `ImageMetadataReader` (cache hit: ~5-10 μs file read, cache miss: ~10-30 ms Imagick)
 - `blur` enabled: reads blur data URI via `BlurPlaceholderGenerator` (cache hit: ~5-10 μs file read, cache miss: ~50-100 ms Imagick)
 - With warm cache, 50 images on a page ≈ 250-500 μs total I/O overhead
 
@@ -179,6 +179,7 @@ Used by `auto_dimensions` feature — when only `width` is provided, height is c
 `FormatNegotiator` selects the best output format based on configured formats and browser support:
 - `negotiate(string $acceptHeader, string $sourceExtension)` — low-level, takes raw Accept header
 - `negotiateFromRequest(Request $request, string $src)` — convenience wrapper, extracts Accept header and extension
+- `getFallbackFormat(string $sourceExtension): string` — static, single source of truth for mapping source extensions to web-safe fallback formats (png stays png, gif/tiff/heic/bmp → jpeg, unknown → jpeg). Used by both `negotiate()` and `ImageComponent::getFallbackFormat()`.
 
 ### Programmatic URL generation
 
@@ -233,9 +234,9 @@ Used for API responses, emails, or any context outside Twig templates.
 
 ```yaml
 id_sign_image:
-    device_sizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840]
+    device_sizes: [ 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
-    formats: ['avif', 'webp']
+    formats: [ 'avif', 'webp' ]
     cache:
         ttl: 2592000                    # 30 days (controller mode only)
         path: '%kernel.project_dir%/public/_image'

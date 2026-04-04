@@ -1,8 +1,12 @@
 # ImageBundle
 
-Lightweight yet powerful image optimization bundle for Symfony. Provides a `<twig:Image>` component that generates `<picture>` tags with automatic resize, client-side format negotiation (AVIF/WebP), responsive `srcset`, blur placeholders, watermark profiles, and HMAC-signed URLs.
+Lightweight yet powerful image optimization bundle for Symfony. Provides a `<twig:Image>` component that generates
+`<picture>` tags with automatic resize, client-side format negotiation (AVIF/WebP), responsive `srcset`, blur
+placeholders, watermark profiles, and HMAC-signed URLs.
 
-Built on ext-imagick with no additional dependencies — zero CLI tools, no third-party image libraries. Designed for performance: web server serves cached images directly via `try_files` with no PHP overhead. Extensible through interfaces for custom image sources and cache storage. Ready for FrankenPHP worker mode.
+Built on ext-imagick with no additional dependencies — zero CLI tools, no third-party image libraries. Designed for
+performance: web server serves cached images directly via `try_files` with no PHP overhead. Extensible through
+interfaces for custom image sources and cache storage. Ready for FrankenPHP worker mode.
 
 ## Requirements
 
@@ -40,13 +44,13 @@ id_sign_image:
 # config/packages/id_sign_image.yaml
 id_sign_image:
     # Breakpoints for responsive srcset generation
-    device_sizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840]
+    device_sizes: [ 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
 
     # Default output quality (1-100)
     default_quality: 80
 
     # Output formats in priority order (used for <source> elements in <picture>)
-    formats: ['avif', 'webp']
+    formats: [ 'avif', 'webp' ]
 
     # Cache settings
     cache:
@@ -103,10 +107,13 @@ id_sign_image:
 Output:
 
 ```html
+
 <picture>
-    <source type="image/avif" srcset="/_image/.../640_480_none_80.avif 640w, /_image/.../800_600_none_80.avif 800w" sizes="100vw">
-    <source type="image/webp" srcset="/_image/.../640_480_none_80.webp 640w, /_image/.../800_600_none_80.webp 800w" sizes="100vw">
-    <img src="/_image/.../800_600_none_80.jpeg" width="800" height="600" alt="A photo" decoding="async" />
+    <source type="image/avif" srcset="/_image/.../640_480_none_80.avif 640w, /_image/.../800_600_none_80.avif 800w"
+            sizes="100vw">
+    <source type="image/webp" srcset="/_image/.../640_480_none_80.webp 640w, /_image/.../800_600_none_80.webp 800w"
+            sizes="100vw">
+    <img src="/_image/.../800_600_none_80.jpeg" width="800" height="600" alt="A photo" decoding="async"/>
 </picture>
 ```
 
@@ -159,40 +166,54 @@ SVG files are served directly without any processing:
 Output:
 
 ```html
-<img src="/icons/logo.svg" width="120" height="40" alt="Logo" decoding="async" />
+<img src="/icons/logo.svg" width="120" height="40" alt="Logo" decoding="async"/>
 ```
 
 ## Component attributes
 
-| Attribute | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `src` | string | yes | Path to source image (relative to source directory) |
-| `width` | int | yes | Display width in pixels |
-| `height` | int | no | Display height (auto-calculated if `auto_dimensions` enabled) |
-| `fit` | string | no | Resize mode: `cover`, `contain`, or `scale-down` |
-| `blur` | bool | no | Show blur placeholder (overrides global setting) |
-| `quality` | int | no | Output quality (overrides `default_quality`) |
-| `watermark` | string\|false | no | Watermark profile name, `false` to disable, omit for global default |
+| Attribute        | Type          | Required | Description                                                                  |
+|------------------|---------------|----------|------------------------------------------------------------------------------|
+| `src`            | string        | yes      | Path to source image (relative to source directory)                          |
+| `width`          | int           | yes      | Display width in pixels                                                      |
+| `height`         | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled)                |
+| `fit`            | string        | no       | Resize mode: `cover`, `contain`, or `scale-down`                             |
+| `blur`           | bool          | no       | Show blur placeholder (overrides global setting)                             |
+| `quality`        | int           | no       | Output quality (overrides `default_quality`)                                 |
+| `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global `auto_dimensions`) |
+| `watermark`      | string\|false | no       | Watermark profile name, `false` to disable, omit for global default          |
 
 All other attributes (`alt`, `class`, `id`, `loading`, `data-*`, `aria-*`, etc.) are passed through to the `<img>` tag.
 
 ### `src`
 
-Path to the source image relative to the configured source directory (default `data/`). The file must exist on the filesystem. For SVG files, no processing is applied — the image is served directly.
+Path to the source image relative to the configured source directory (default `data/`). The file must exist on the
+filesystem. For SVG files, no processing is applied — the image is served directly.
 
 ### `width`
 
-The display width of the image in pixels. This value is used for the `width` HTML attribute (CLS prevention), as the main size in srcset, and as the upper bound for responsive breakpoints.
+The display width of the image in pixels. This value is used for the `width` HTML attribute (CLS prevention), as the
+main size in srcset, and as the upper bound for responsive breakpoints.
 
 ### `height`
 
-The display height in pixels. When omitted and `auto_dimensions` is enabled, the height is automatically calculated from the source image's aspect ratio. When both `width` and `height` are provided with a `fit` mode, the server produces an image with exactly these dimensions.
+The display height in pixels. When omitted and auto dimensions is enabled (globally via `auto_dimensions` config or
+per-component via `autoDimensions` prop), the height is automatically calculated from the source image's aspect ratio.
+When both `width` and `height` are provided with a `fit` mode, the server produces an image with exactly these
+dimensions.
+
+### `autoDimensions`
+
+Overrides the global `auto_dimensions` config for this specific component instance. When `true`, height is
+auto-calculated from the source aspect ratio (if `height` is not provided). When `false`, auto-calculation is disabled
+even if the global config is enabled. When omitted (`null`), the global config value is used.
 
 ### `fit`
 
 Controls how the image is resized when both `width` and `height` are specified:
 
-- **`cover`** — fills the target dimensions, cropping any overflow. Crop is always centered. For custom crop positioning, omit `fit` and use CSS `object-fit` + `object-position` instead — this gives full control over the visible area in the browser.
+- **`cover`** — fills the target dimensions, cropping any overflow. Crop is always centered. For custom crop
+  positioning, omit `fit` and use CSS `object-fit` + `object-position` instead — this gives full control over the
+  visible area in the browser.
 - **`contain`** — fits within the target dimensions, preserving aspect ratio (may leave empty space)
 - **`scale-down`** — same as `contain`, but never upscales images smaller than the target
 
@@ -200,29 +221,35 @@ When omitted, the image is resized to the exact dimensions, which may distort th
 
 ### `blur`
 
-Enables an inline blur placeholder. A tiny 10px-wide JPEG thumbnail is base64-encoded and rendered as a CSS `background-image` with `filter: blur(20px)`. Once the full image loads, the placeholder is removed via `onload`. The placeholder is generated on-demand and cached on disk.
+Enables an inline blur placeholder. A tiny 10px-wide JPEG thumbnail is base64-encoded and rendered as a CSS
+`background-image` with `filter: blur(20px)`. Once the full image loads, the placeholder is removed via `onload`. The
+placeholder is generated on-demand and cached on disk.
 
 Can be set globally via `blur.enabled` in bundle configuration. The component attribute overrides the global setting.
 
 ### `quality`
 
-Output compression quality (1-100). Overrides the global `default_quality` setting. Lower values produce smaller files with more compression artifacts. Typical values: 60-80 for photos, 80-90 for detailed images.
+Output compression quality (1-100). Overrides the global `default_quality` setting. Lower values produce smaller files
+with more compression artifacts. Typical values: 60-80 for photos, 80-90 for detailed images.
 
 ### `watermark`
 
-Selects a named watermark profile to apply. Profiles are defined in `watermarks` in the bundle configuration, each with its own image, position, opacity, size, and margin.
+Selects a named watermark profile to apply. Profiles are defined in `watermarks` in the bundle configuration, each with
+its own image, position, opacity, size, and margin.
 
 - **`watermark="copyright"`** — applies the `copyright` profile
 - **`:watermark="false"`** — disables watermark even if `default_watermark` is set globally
 - **Omitted** — uses the `default_watermark` profile from config (null = no watermark)
 
-Each watermark profile produces a separate cached file with a distinct URL, so the same image can exist with different watermarks or without one.
+Each watermark profile produces a separate cached file with a distinct URL, so the same image can exist with different
+watermarks or without one.
 
 ## Serve modes
 
 ### Public mode (default)
 
-Cached images are stored at a path matching the URL. The web server serves them directly via `try_files`, PHP is only called on the first request per variant.
+Cached images are stored at a path matching the URL. The web server serves them directly via `try_files`, PHP is only
+called on the first request per variant.
 
 Nginx example:
 
@@ -243,7 +270,8 @@ handle /_image/* {
 
 ### Controller mode
 
-Every image request goes through PHP. Enables TTL-based cache invalidation -- expired variants are regenerated on the next request. Use this when you need access control or TTL-based refresh.
+Every image request goes through PHP. Enables TTL-based cache invalidation -- expired variants are regenerated on the
+next request. Use this when you need access control or TTL-based refresh.
 
 ```yaml
 id_sign_image:
@@ -287,11 +315,14 @@ security:
         - { path: ^/_image, roles: ROLE_USER }
 ```
 
-In public mode, the web server serves cached files directly and bypasses PHP — Symfony's security firewall is not involved. Use controller mode when access control is required.
+In public mode, the web server serves cached files directly and bypasses PHP — Symfony's security firewall is not
+involved. Use controller mode when access control is required.
 
 ## URL security
 
-All image URLs are signed with HMAC-SHA256 derived from `kernel.secret`. The signature is part of the URL path, so any modification of parameters (width, height, quality, etc.) results in a `403 Forbidden` response. This prevents cache exhaustion attacks where an attacker generates arbitrary image variants.
+All image URLs are signed with HMAC-SHA256 derived from `kernel.secret`. The signature is part of the URL path, so any
+modification of parameters (width, height, quality, etc.) results in a `403 Forbidden` response. This prevents cache
+exhaustion attacks where an attacker generates arbitrary image variants.
 
 ## Image source
 

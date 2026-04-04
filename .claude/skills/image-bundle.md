@@ -28,15 +28,16 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 
 ### Props
 
-| Prop        | Type          | Required | Description                                                   |
-|-------------|---------------|----------|---------------------------------------------------------------|
-| `src`       | string        | yes      | Path relative to source directory                             |
-| `width`     | int           | yes      | Display width in pixels                                       |
-| `height`    | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled) |
-| `fit`       | string        | no       | `cover` (center crop), `contain`, or `scale-down`             |
-| `blur`      | bool          | no       | Inline blur placeholder                                       |
-| `quality`   | int           | no       | Output quality 1-100 (default from config)                    |
-| `watermark` | string\|false | no       | Profile name, `false` to disable, omit for global default     |
+| Prop             | Type          | Required | Description                                                       |
+|------------------|---------------|----------|-------------------------------------------------------------------|
+| `src`            | string        | yes      | Path relative to source directory                                 |
+| `width`          | int           | yes      | Display width in pixels                                           |
+| `height`         | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled)     |
+| `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down`                 |
+| `blur`           | bool          | no       | Inline blur placeholder                                           |
+| `quality`        | int           | no       | Output quality 1-100 (default from config)                        |
+| `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config) |
+| `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default         |
 
 All other attributes pass through to `<img>`: `alt`, `class`, `id`, `loading`, `sizes`, `data-*`, `aria-*`, etc.
 
