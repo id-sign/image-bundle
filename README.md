@@ -157,7 +157,7 @@ Output:
 
 ### SVG passthrough
 
-SVG files are served directly without any processing:
+SVG files are served without any image processing — no resize, no format conversion, no srcset. The file is copied to cache on first request and served via `try_files` (public mode) or controller. No HMAC signature is needed.
 
 ```twig
 <twig:Image src="icons/logo.svg" width="120" height="40" alt="Logo" />
@@ -166,7 +166,7 @@ SVG files are served directly without any processing:
 Output:
 
 ```html
-<img src="/icons/logo.svg" width="120" height="40" alt="Logo" decoding="async"/>
+<img src="/_image/icons/logo.svg" width="120" height="40" alt="Logo" decoding="async"/>
 ```
 
 ## Component attributes

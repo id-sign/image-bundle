@@ -1,30 +1,31 @@
 {% if this.svg %}
-<img
-    src="/{{ src }}"
-    width="{{ width }}"
-    {% if height %}height="{{ height }}"{% endif %}
-    {{ attributes.defaults({decoding: 'async'}) }}
-/>
-{% else %}
-<picture>
-    {% for source in sources %}
-    <source
-        type="{{ source.type }}"
-        srcset="{{ source.srcset }}"
-        {% if attributes.has('sizes') %}sizes="{{ attributes.render('sizes') }}"{% else %}sizes="100vw"{% endif %}
-    >
-    {% endfor %}
     <img
-        src="{{ fallbackSrc }}"
-        width="{{ width }}"
-        {% if resolvedHeight %}height="{{ resolvedHeight }}"{% endif %}
-        {% if showBlur and blurDataUri %}
-        style="background-image:url({{ blurDataUri }});background-size:cover;filter:blur(20px);{{ attributes.render('style') }}"
-        onload="this.style.backgroundImage='none';this.style.filter='none'"
-        {{ attributes.without('style').defaults({decoding: 'async'}) }}
-        {% else %}
-        {{ attributes.defaults({decoding: 'async'}) }}
-        {% endif %}
+            src="{{ svgSrc }}"
+            width="{{ width }}"
+            {% if height %}height="{{ height }}"{% endif %}
+            {{ attributes.defaults({decoding: 'async'}) }}
     />
-</picture>
+{% else %}
+    <picture>
+        {% for source in sources %}
+            <source
+                    type="{{ source.type }}"
+                    srcset="{{ source.srcset }}"
+                    {% if attributes.has('sizes') %}sizes="{{ attributes.render('sizes') }}"
+                    {% else %}sizes="100vw"{% endif %}
+            >
+        {% endfor %}
+        <img
+                src="{{ fallbackSrc }}"
+                width="{{ width }}"
+                {% if resolvedHeight %}height="{{ resolvedHeight }}"{% endif %}
+                {% if showBlur and blurDataUri %}
+                    style="background-image:url({{ blurDataUri }});background-size:cover;filter:blur(20px);{{ attributes.render('style') }}"
+                    onload="this.style.backgroundImage='none';this.style.filter='none'"
+                    {{ attributes.without('style').defaults({decoding: 'async'}) }}
+                {% else %}
+                    {{ attributes.defaults({decoding: 'async'}) }}
+                {% endif %}
+        />
+    </picture>
 {% endif %}

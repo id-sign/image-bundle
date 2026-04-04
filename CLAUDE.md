@@ -155,7 +155,7 @@ Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HM
 
 **Default:** `decoding="async"` (overridable). No default `loading` attribute.
 
-**SVG passthrough:** `.svg` files render as plain `<img src="/path.svg">` — no `<picture>`, no processing, no srcset, no blur.
+**SVG passthrough:** `.svg` files render as plain `<img src="/_image/path.svg">` — no `<picture>`, no processing, no srcset, no blur. SVG URLs go through `route_prefix` (not raw source path), so the file is served from cache via `try_files` (public mode) or controller. No HMAC signature — no parameters to vary.
 
 **I/O during render (component `mount()`):**
 - `auto_dimensions` enabled (globally or via `autoDimensions` prop) + no `height` prop: reads image metadata via `ImageMetadataReader` (cache hit: ~5-10 μs file read, cache miss: ~10-30 ms Imagick)
@@ -195,8 +195,17 @@ Used for API responses, emails, or any context outside Twig templates.
 
 ### Controller
 
-`ImageController` is an invokable controller receiving `{path}` from the route. Flow:
+`ImageController` is an invokable controller receiving `{path}` from the route.
 
+**SVG flow** (path ends with `.svg`):
+1. `ImageSourceInterface::exists()` — source check → 404 if missing
+2. `CacheStorageInterface::has()` — cache check
+3. Cache miss: copy source to temp file → `write()` to cache
+4. `BinaryFileResponse` with immutable cache headers
+
+No HMAC, no Imagick processing.
+
+**Raster flow:**
 1. `CachePathResolver::parse($path)` — extract parameters from URL
 2. `UrlSigner::verify()` — HMAC check → 403 if invalid
 3. `ImageSourceInterface::exists()` — source check → 404 if missing

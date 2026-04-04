@@ -165,6 +165,40 @@ class ImageControllerTest extends TestCase
         self::assertNotSame($path, $pathNoWm);
     }
 
+    public function testSvgPassthroughReturnsBinaryFileResponse(): void
+    {
+        $path = 'logo.svg';
+        $request = Request::create('/_image/'.$path);
+
+        $response = ($this->controller)($request, $path);
+
+        self::assertInstanceOf(BinaryFileResponse::class, $response);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertFileExists($this->cacheDir.'/'.$path);
+    }
+
+    public function testSvgCacheHitServesExistingFile(): void
+    {
+        $path = 'logo.svg';
+        $request = Request::create('/_image/'.$path);
+
+        ($this->controller)($request, $path);
+        $response = ($this->controller)($request, $path);
+
+        self::assertInstanceOf(BinaryFileResponse::class, $response);
+        self::assertSame(200, $response->getStatusCode());
+    }
+
+    public function testSvgMissingSourceReturns404(): void
+    {
+        $path = 'nonexistent.svg';
+        $request = Request::create('/_image/'.$path);
+
+        $response = ($this->controller)($request, $path);
+
+        self::assertSame(404, $response->getStatusCode());
+    }
+
     private function removeDir(string $dir): void
     {
         if (!is_dir($dir)) {

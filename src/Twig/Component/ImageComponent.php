@@ -151,6 +151,12 @@ class ImageComponent
         return $this->routePrefix.'/'.$cachePath;
     }
 
+    #[ExposeInTemplate('svgSrc')]
+    public function getSvgSrc(): string
+    {
+        return $this->routePrefix.'/'.$this->src;
+    }
+
     #[ExposeInTemplate('showBlur')]
     public function getShowBlur(): bool
     {

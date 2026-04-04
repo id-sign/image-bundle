@@ -56,7 +56,7 @@ Generates `<picture>` with `<source>` per configured format + `<img>` fallback:
 </picture>
 ```
 
-SVG files render as plain `<img>` — no processing, no `<picture>`.
+SVG files render as plain `<img>` — no processing, no `<picture>`. Served via `route_prefix` (copied to cache), no HMAC.
 
 ## Configuration
 

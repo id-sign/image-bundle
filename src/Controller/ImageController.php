@@ -30,6 +30,40 @@ class ImageController
 
     public function __invoke(Request $request, string $path): Response
     {
+        if ('svg' === strtolower(pathinfo($path, \PATHINFO_EXTENSION))) {
+            return $this->serveSvg($path);
+        }
+
+        return $this->serveRaster($path);
+    }
+
+    private function serveSvg(string $src): Response
+    {
+        if (!$this->imageSource->exists($src)) {
+            return new Response('Source image not found.', Response::HTTP_NOT_FOUND);
+        }
+
+        if (!$this->cacheStorage->has($src)) {
+            $tmpFile = tempnam($this->tmpDir, 'id_sign_image_');
+            if (false === $tmpFile) {
+                return new Response('Failed to create temporary file.', Response::HTTP_INTERNAL_SERVER_ERROR);
+            }
+
+            try {
+                copy($this->imageSource->getAbsolutePath($src), $tmpFile);
+                $this->cacheStorage->write($src, $tmpFile);
+            } finally {
+                if (is_file($tmpFile)) {
+                    unlink($tmpFile);
+                }
+            }
+        }
+
+        return $this->buildResponse($src);
+    }
+
+    private function serveRaster(string $path): Response
+    {
         $params = $this->cachePathResolver->parse($path);
         if (null === $params) {
             return new Response('Invalid image path.', Response::HTTP_BAD_REQUEST);
@@ -75,7 +109,12 @@ class ImageController
             }
         }
 
-        $response = new BinaryFileResponse($this->cacheStorage->getAbsolutePath($path));
+        return $this->buildResponse($path);
+    }
+
+    private function buildResponse(string $cachePath): Response
+    {
+        $response = new BinaryFileResponse($this->cacheStorage->getAbsolutePath($cachePath));
         $response->headers->set('Cache-Control', 'public, max-age=31536000, immutable');
         $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_INLINE);
 
