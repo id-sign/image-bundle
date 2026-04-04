@@ -65,6 +65,37 @@ class FormatNegotiatorTest extends TestCase
         self::assertSame('png', $format);
     }
 
+    public function testGifFallsBackToJpeg(): void
+    {
+        self::assertSame('jpeg', FormatNegotiator::getFallbackFormat('gif'));
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('fallbackFormatProvider')]
+    public function testGetFallbackFormat(string $extension, string $expected): void
+    {
+        self::assertSame($expected, FormatNegotiator::getFallbackFormat($extension));
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function fallbackFormatProvider(): iterable
+    {
+        yield 'jpg' => ['jpg', 'jpeg'];
+        yield 'jpeg' => ['jpeg', 'jpeg'];
+        yield 'png' => ['png', 'png'];
+        yield 'gif' => ['gif', 'jpeg'];
+        yield 'tiff' => ['tiff', 'jpeg'];
+        yield 'tif' => ['tif', 'jpeg'];
+        yield 'heic' => ['heic', 'jpeg'];
+        yield 'heif' => ['heif', 'jpeg'];
+        yield 'bmp' => ['bmp', 'jpeg'];
+        yield 'avif' => ['avif', 'avif'];
+        yield 'webp' => ['webp', 'webp'];
+        yield 'unknown' => ['xyz', 'jpeg'];
+        yield 'uppercase' => ['JPG', 'jpeg'];
+    }
+
     public function testGetMimeType(): void
     {
         self::assertSame('image/avif', FormatNegotiator::getMimeType('avif'));
