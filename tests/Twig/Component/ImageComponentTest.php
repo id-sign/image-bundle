@@ -124,4 +124,28 @@ class ImageComponentTest extends TestCase
 
         self::assertNull($component->getResolvedHeight());
     }
+
+    public function testSvgSrcUsesRoutePrefix(): void
+    {
+        $signer = new UrlSigner('test-secret');
+        $resolver = new CachePathResolver($signer);
+        $srcsetGenerator = new SrcsetGenerator($resolver, [640], '/_image');
+
+        $component = new ImageComponent(
+            $srcsetGenerator,
+            $resolver,
+            $this->createStub(BlurPlaceholderGenerator::class),
+            $this->createStub(ImageMetadataReader::class),
+            80,
+            ['avif', 'webp'],
+            '/_image',
+            false,
+            false,
+            null,
+        );
+        $component->src = 'icons/logo.svg';
+        $component->width = 120;
+
+        self::assertSame('/_image/icons/logo.svg', $component->getSvgSrc());
+    }
 }
