@@ -214,6 +214,8 @@ Used for API responses, emails, or any context outside Twig templates.
 
 ## Code quality
 
+**IMPORTANT:** Before every commit, all three checks must pass — PHP CS Fixer, PHPStan, and PHPUnit. These are enforced by GitHub Actions and must not be skipped.
+
 ### PHP CS Fixer
 - **`@Symfony` + `@Symfony:risky`** ruleset
 - Config: `.php-cs-fixer.dist.php`
