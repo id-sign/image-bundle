@@ -67,7 +67,7 @@ class PurgeCacheCommand extends Command
     private function purgeBySource(SymfonyStyle $io, string $src, bool $dryRun): int
     {
         if ($dryRun) {
-            $count = $this->countFiles($this->cacheDirectory.'/'.$src);
+            $count = $this->countSourceFiles($this->cacheDirectory.'/'.$src);
             $io->success(\sprintf('Would delete %d cached file(s) for "%s".', $count, $src));
         } else {
             $count = $this->cacheStorage->deleteBySource($src);
@@ -121,7 +121,7 @@ class PurgeCacheCommand extends Command
     private function purgeAll(SymfonyStyle $io, bool $dryRun): int
     {
         if ($dryRun) {
-            $count = $this->countFiles($this->cacheDirectory);
+            $count = $this->countFilesRecursive($this->cacheDirectory);
             $io->success(\sprintf('Would delete %d cached file(s).', $count));
         } else {
             $count = $this->cacheStorage->purgeAll();
@@ -131,7 +131,29 @@ class PurgeCacheCommand extends Command
         return Command::SUCCESS;
     }
 
-    private function countFiles(string $dir): int
+    private function countSourceFiles(string $path): int
+    {
+        if (is_file($path)) {
+            return 1;
+        }
+
+        if (!is_dir($path)) {
+            return 0;
+        }
+
+        $count = 0;
+        $iterator = new \DirectoryIterator($path);
+
+        foreach ($iterator as $file) {
+            if (!$file->isDot() && $file->isFile()) {
+                ++$count;
+            }
+        }
+
+        return $count;
+    }
+
+    private function countFilesRecursive(string $dir): int
     {
         if (!is_dir($dir)) {
             return 0;

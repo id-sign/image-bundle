@@ -53,29 +53,30 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
 
     public function deleteBySource(string $src): int
     {
-        $dir = $this->getAbsolutePath($src);
+        $path = $this->getAbsolutePath($src);
 
-        if (!is_dir($dir)) {
+        // SVG: cached as a single file, no variants directory
+        if (is_file($path)) {
+            $this->delete($src);
+
+            return 1;
+        }
+
+        if (!is_dir($path)) {
             return 0;
         }
 
         $count = 0;
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
+        $iterator = new \DirectoryIterator($path);
 
-        /** @var \SplFileInfo $file */
         foreach ($iterator as $file) {
-            if ($file->isFile()) {
+            if (!$file->isDot() && $file->isFile()) {
                 unlink($file->getPathname());
                 ++$count;
-            } elseif ($file->isDir()) {
-                rmdir($file->getPathname());
             }
         }
 
-        rmdir($dir);
+        rmdir($path);
 
         return $count;
     }

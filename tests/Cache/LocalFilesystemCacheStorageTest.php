@@ -68,12 +68,14 @@ class LocalFilesystemCacheStorageTest extends TestCase
     {
         $this->createCacheFile('a/1.avif');
         $this->createCacheFile('b/2.webp');
+        $this->createCacheFile('icons/logo.svg');
 
         $count = $this->storage->purgeAll();
 
-        self::assertSame(2, $count);
+        self::assertSame(3, $count);
         self::assertFalse($this->storage->has('a/1.avif'));
         self::assertFalse($this->storage->has('b/2.webp'));
+        self::assertFalse($this->storage->has('icons/logo.svg'));
     }
 
     public function testHasReturnsFalseForExpiredFile(): void
@@ -85,6 +87,32 @@ class LocalFilesystemCacheStorageTest extends TestCase
         touch($this->cacheDir.'/old.avif', time() - 2);
 
         self::assertFalse($storage->has('old.avif'));
+    }
+
+    public function testDeleteBySourceRemovesRasterVariants(): void
+    {
+        $this->createCacheFile('uploads/photo.jpg/abc_800_600_cover_80.avif');
+        $this->createCacheFile('uploads/photo.jpg/abc_400_300_none_75.webp');
+
+        $count = $this->storage->deleteBySource('uploads/photo.jpg');
+
+        self::assertSame(2, $count);
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/uploads/photo.jpg');
+    }
+
+    public function testDeleteBySourceRemovesSvgFile(): void
+    {
+        $this->createCacheFile('icons/logo.svg');
+
+        $count = $this->storage->deleteBySource('icons/logo.svg');
+
+        self::assertSame(1, $count);
+        self::assertFileDoesNotExist($this->cacheDir.'/icons/logo.svg');
+    }
+
+    public function testDeleteBySourceReturnsZeroForNonexistent(): void
+    {
+        self::assertSame(0, $this->storage->deleteBySource('nonexistent.jpg'));
     }
 
     private function createCacheFile(string $path): void

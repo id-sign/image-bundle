@@ -94,10 +94,11 @@ URLs are path-based (not query string) so they work with web server `try_files`:
 
 Example: `/_image/uploads/photo.jpg/a1b2c3d4e5f6g7h8_800_600_cover_80.avif`
 With watermark: `/_image/uploads/photo.jpg/b2c3d4e5f6g7h8a1_800_600_cover_80_wm-copyright.avif`
+SVG (no signature, no parameters): `/_image/icons/logo.svg`
 
 The URL path doubles as the filesystem cache path. `CachePathResolver` generates paths, and can also parse parameters back from a path (`resolve()` and `parse()`).
 
-Source path (`src`) is the first path segment — this means all cached variants of a source image live under the same directory prefix. `deleteBySource('uploads/photo.jpg')` = delete the `uploads/photo.jpg/` directory.
+Source path (`src`) is the first path segment — this means all cached variants of a source image live under the same directory prefix. `deleteBySource('uploads/photo.jpg')` = delete the `uploads/photo.jpg/` directory. SVG files are cached as a single file at `{src}` (no variants directory), so `deleteBySource('icons/logo.svg')` deletes the file directly via `delete()`.
 
 #### Image source abstraction
 
@@ -237,8 +238,8 @@ No HMAC, no Imagick processing.
 - Zero errors
 
 ### PHPUnit
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`
-- Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (404), avif/webp format generation, watermark processing
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`
+- Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (404), avif/webp format generation, watermark processing, SVG passthrough
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference

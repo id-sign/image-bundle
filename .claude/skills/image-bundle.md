@@ -120,7 +120,7 @@ location /_image/ { try_files $uri @symfony; }
 
 ## URL security
 
-All URLs are HMAC-signed. Tampered parameters → 403.
+Raster URLs are HMAC-signed. Tampered parameters → 403. SVG URLs have no signature (no parameters to vary).
 
 ## Cache management
 
@@ -144,5 +144,6 @@ $url = $imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 
 
 ```php
 // Inject CacheStorageInterface, then:
-$cacheStorage->deleteBySource('uploads/photo.jpg'); // deletes all variants
+$cacheStorage->deleteBySource('uploads/photo.jpg'); // deletes all raster variants
+$cacheStorage->deleteBySource('icons/logo.svg');    // deletes cached SVG file
 ```
