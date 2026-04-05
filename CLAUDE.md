@@ -226,6 +226,8 @@ No HMAC, no Imagick processing.
 
 **IMPORTANT:** Before every commit, all three checks must pass — PHP CS Fixer, PHPStan, and PHPUnit. These are enforced by GitHub Actions and must not be skipped.
 
+**NEVER** add `Co-Authored-By`, `Signed-off-by`, or any other trailer attributing AI to commit messages. The git user is the sole author.
+
 ### PHP CS Fixer
 - **`@Symfony` + `@Symfony:risky`** ruleset
 - Config: `.php-cs-fixer.dist.php`
