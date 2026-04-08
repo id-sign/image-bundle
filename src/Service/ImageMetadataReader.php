@@ -76,14 +76,7 @@ class ImageMetadataReader implements ResetInterface
 
     private function getCachePath(string $src): string
     {
-        $hash = sha1($src);
-
-        return \sprintf(
-            '%s/meta/%s/%s.json',
-            $this->cacheDirectory,
-            substr($hash, 0, 2),
-            $hash,
-        );
+        return \sprintf('%s/%s/meta.json', $this->cacheDirectory, $src);
     }
 
     private function writeCache(string $path, string $content): void

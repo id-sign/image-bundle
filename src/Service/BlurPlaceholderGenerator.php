@@ -74,14 +74,7 @@ class BlurPlaceholderGenerator implements ResetInterface
 
     private function getCachePath(string $src): string
     {
-        $hash = sha1($src);
-
-        return \sprintf(
-            '%s/blur/%s/%s.txt',
-            $this->cacheDirectory,
-            substr($hash, 0, 2),
-            $hash,
-        );
+        return \sprintf('%s/%s/blur.txt', $this->cacheDirectory, $src);
     }
 
     private function writeCache(string $path, string $content): void

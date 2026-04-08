@@ -98,7 +98,7 @@ SVG (no signature, no parameters): `/_image/icons/logo.svg`
 
 The URL path doubles as the filesystem cache path. `CachePathResolver` generates paths, and can also parse parameters back from a path (`resolve()` and `parse()`).
 
-Source path (`src`) is the first path segment — this means all cached variants of a source image live under the same directory prefix. `deleteBySource('uploads/photo.jpg')` = delete the `uploads/photo.jpg/` directory. SVG files are cached as a single file at `{src}` (no variants directory), so `deleteBySource('icons/logo.svg')` deletes the file directly via `delete()`.
+Source path (`src`) is the first path segment — this means all cached data for a source image (variants, `meta.json`, `blur.txt`) live under the same directory prefix. `deleteBySource('uploads/photo.jpg')` = delete the `uploads/photo.jpg/` directory, which removes everything at once. This colocation is intentional — if metadata or blur cache were stored elsewhere, `deleteBySource()` would need to know about and clean up multiple locations. SVG files are cached as a single file at `{src}` (no variants directory), so `deleteBySource('icons/logo.svg')` deletes the file directly via `delete()`.
 
 #### Image source abstraction
 
@@ -166,13 +166,13 @@ Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HM
 
 ### Blur placeholder
 
-`BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). Cached as `.txt` files under `{cache_path}/blur/`. In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
+`BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). Cached as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
 
 Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onload>`.
 
 ### Image metadata
 
-`ImageMetadataReader` reads source image dimensions via Imagick. Cached as `.json` files under `{cache_path}/meta/`. In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
+`ImageMetadataReader` reads source image dimensions via Imagick. Cached as `meta.json` in the source image's cache directory (`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
 
 Used by `auto_dimensions` feature — when only `width` is provided, height is calculated from the source aspect ratio.
 
