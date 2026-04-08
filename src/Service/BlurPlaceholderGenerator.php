@@ -17,6 +17,8 @@ class BlurPlaceholderGenerator implements ResetInterface
         private readonly string $cacheDirectory,
         private readonly int $blurSize,
         private readonly int $blurQuality,
+        private readonly ?int $filePermissions,
+        private readonly int $directoryPermissions,
     ) {
     }
 
@@ -86,10 +88,14 @@ class BlurPlaceholderGenerator implements ResetInterface
     {
         $dir = \dirname($path);
 
-        if (!is_dir($dir) && !mkdir($dir, 0o775, true) && !is_dir($dir)) {
+        if (!is_dir($dir) && !mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
             throw new \RuntimeException(\sprintf('Failed to create directory: %s', $dir));
         }
 
         file_put_contents($path, $content);
+
+        if (null !== $this->filePermissions) {
+            chmod($path, $this->filePermissions);
+        }
     }
 }

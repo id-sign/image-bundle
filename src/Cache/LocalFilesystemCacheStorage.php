@@ -9,6 +9,8 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     public function __construct(
         private readonly string $cacheDirectory,
         private readonly int $ttl,
+        private readonly ?int $filePermissions,
+        private readonly int $directoryPermissions,
     ) {
     }
 
@@ -33,12 +35,16 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
         $absolutePath = $this->getAbsolutePath($cachePath);
         $dir = \dirname($absolutePath);
 
-        if (!is_dir($dir) && !mkdir($dir, 0o775, true) && !is_dir($dir)) {
+        if (!is_dir($dir) && !mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
             throw new \RuntimeException(\sprintf('Failed to create directory: %s', $dir));
         }
 
         if (!rename($sourcePath, $absolutePath)) {
             throw new \RuntimeException(\sprintf('Failed to move file from %s to %s', $sourcePath, $absolutePath));
+        }
+
+        if (null !== $this->filePermissions) {
+            chmod($absolutePath, $this->filePermissions);
         }
     }
 

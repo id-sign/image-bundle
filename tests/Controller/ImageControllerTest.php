@@ -30,8 +30,8 @@ class ImageControllerTest extends TestCase
         $this->cachePathResolver = new CachePathResolver($signer);
 
         $this->controller = new ImageController(
-            new ImagickProcessor(),
-            new LocalFilesystemCacheStorage($this->cacheDir, 3600),
+            new ImagickProcessor(0o660, 0o770),
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $this->cachePathResolver,
             $signer,
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
@@ -143,8 +143,8 @@ class ImageControllerTest extends TestCase
         $resolver = new CachePathResolver($signer);
 
         $controller = new ImageController(
-            new ImagickProcessor(),
-            new LocalFilesystemCacheStorage($this->cacheDir, 3600),
+            new ImagickProcessor(0o660, 0o770),
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $resolver,
             $signer,
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),

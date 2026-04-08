@@ -85,6 +85,10 @@ id_sign_image:
     # Auto-calculate height from source aspect ratio when only width is provided
     auto_dimensions: false
 
+    # Permissions for created cache files and directories
+    file_permissions: 0660        # null = use umask default
+    directory_permissions: 0770
+
     # Temporary directory for image processing (defaults to sys_get_temp_dir())
     tmp_dir: ~
 

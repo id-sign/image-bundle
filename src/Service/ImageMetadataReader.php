@@ -15,6 +15,8 @@ class ImageMetadataReader implements ResetInterface
     public function __construct(
         private readonly ImageSourceInterface $imageSource,
         private readonly string $cacheDirectory,
+        private readonly ?int $filePermissions,
+        private readonly int $directoryPermissions,
     ) {
     }
 
@@ -88,10 +90,14 @@ class ImageMetadataReader implements ResetInterface
     {
         $dir = \dirname($path);
 
-        if (!is_dir($dir) && !mkdir($dir, 0o775, true) && !is_dir($dir)) {
+        if (!is_dir($dir) && !mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
             throw new \RuntimeException(\sprintf('Failed to create directory: %s', $dir));
         }
 
         file_put_contents($path, $content);
+
+        if (null !== $this->filePermissions) {
+            chmod($path, $this->filePermissions);
+        }
     }
 }

@@ -18,12 +18,17 @@ services:
         arguments:
             $cacheDirectory: '%id_sign_image.cache.path%'
             $ttl: '%id_sign_image.cache.ttl%'
+            $filePermissions: '%id_sign_image.file_permissions%'
+            $directoryPermissions: '%id_sign_image.directory_permissions%'
 
     IdSign\ImageBundle\Cache\CacheStorageInterface:
         alias: IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage
 
     # Services
-    IdSign\ImageBundle\Service\ImagickProcessor: ~
+    IdSign\ImageBundle\Service\ImagickProcessor:
+        arguments:
+            $filePermissions: '%id_sign_image.file_permissions%'
+            $directoryPermissions: '%id_sign_image.directory_permissions%'
 
     IdSign\ImageBundle\Service\ImageProcessorInterface:
         alias: IdSign\ImageBundle\Service\ImagickProcessor
@@ -37,10 +42,14 @@ services:
             $cacheDirectory: '%id_sign_image.cache.path%'
             $blurSize: '%id_sign_image.blur.size%'
             $blurQuality: '%id_sign_image.blur.quality%'
+            $filePermissions: '%id_sign_image.file_permissions%'
+            $directoryPermissions: '%id_sign_image.directory_permissions%'
 
     IdSign\ImageBundle\Service\ImageMetadataReader:
         arguments:
             $cacheDirectory: '%id_sign_image.cache.path%'
+            $filePermissions: '%id_sign_image.file_permissions%'
+            $directoryPermissions: '%id_sign_image.directory_permissions%'
 
     IdSign\ImageBundle\Service\SrcsetGenerator:
         arguments:

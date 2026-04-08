@@ -110,7 +110,7 @@ Default implementation: `LocalFilesystemSource` configured with `$basePath` (def
 
 `CacheStorageInterface` with methods: `has()`, `getAbsolutePath()`, `write()`, `delete()`, `deleteBySource()`, `purgeAll()`.
 
-Default implementation: `LocalFilesystemCacheStorage` using native PHP filesystem functions. Cache is always local (no remote storage for cached variants). `write()` uses `rename()` from temp file for atomicity.
+Default implementation: `LocalFilesystemCacheStorage` using native PHP filesystem functions. Cache is always local (no remote storage for cached variants). `write()` uses `rename()` from temp file for atomicity, then `chmod()` to set configured file permissions (needed because `tempnam()` creates files with `0600` and `rename()` preserves them).
 
 #### Two serve modes
 
@@ -125,6 +125,7 @@ Default implementation: `LocalFilesystemCacheStorage` using native PHP filesyste
 - Temp directory is configurable (`tmp_dir` in bundle config)
 - Auto-rotation from EXIF orientation data
 - Directory creation uses race-condition-safe pattern: `!is_dir() && !mkdir() && !is_dir()`
+- File and directory permissions are configurable (`file_permissions`, `directory_permissions`). Applied via `chmod()` after file creation — fixes `0600` permissions from `tempnam()`/`rename()`. Only called on cache miss, zero overhead on cache hit.
 
 #### Fit modes
 
@@ -267,6 +268,8 @@ id_sign_image:
             size: 20
             margin: 10
     auto_dimensions: false
+    file_permissions: 0660              # null = use umask default
+    directory_permissions: 0770
     tmp_dir: ~                          # defaults to sys_get_temp_dir()
     serve_mode: 'public'                # 'public' or 'controller'
     route_prefix: '/_image'
@@ -285,5 +288,4 @@ IdSign\ImageBundle\Source\LocalFilesystemSource:
 
 When releasing a new version:
 1. Update `version` in `composer.json`
-2. Update version in this file (CLAUDE.md)
-3. Tag the release in git
+2. Tag the release in git

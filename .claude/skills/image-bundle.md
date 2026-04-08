@@ -82,6 +82,8 @@ id_sign_image:
             size: 20                    # % of output image width
             margin: 10                  # pixels from edge
     auto_dimensions: false
+    file_permissions: 0660          # permissions for cache files (null = umask default)
+    directory_permissions: 0770     # permissions for cache directories
     tmp_dir: ~
     serve_mode: 'public'
     route_prefix: '/_image'

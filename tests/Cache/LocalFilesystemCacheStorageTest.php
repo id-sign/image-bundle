@@ -16,7 +16,7 @@ class LocalFilesystemCacheStorageTest extends TestCase
     {
         $this->cacheDir = sys_get_temp_dir().'/id_sign_image_test_'.uniqid();
         mkdir($this->cacheDir, 0o775, true);
-        $this->storage = new LocalFilesystemCacheStorage($this->cacheDir, 3600);
+        $this->storage = new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770);
     }
 
     protected function tearDown(): void
@@ -80,7 +80,7 @@ class LocalFilesystemCacheStorageTest extends TestCase
 
     public function testHasReturnsFalseForExpiredFile(): void
     {
-        $storage = new LocalFilesystemCacheStorage($this->cacheDir, 1);
+        $storage = new LocalFilesystemCacheStorage($this->cacheDir, 1, 0o660, 0o770);
         $this->createCacheFile('old.avif');
 
         // Set mtime to 2 seconds ago

@@ -6,6 +6,12 @@ namespace IdSign\ImageBundle\Service;
 
 class ImagickProcessor implements ImageProcessorInterface
 {
+    public function __construct(
+        private readonly ?int $filePermissions,
+        private readonly int $directoryPermissions,
+    ) {
+    }
+
     private const FORMAT_MAP = [
         'avif' => 'AVIF',
         'webp' => 'WEBP',
@@ -54,11 +60,15 @@ class ImagickProcessor implements ImageProcessorInterface
             $imagick->setImageCompressionQuality($quality);
 
             $outputDir = \dirname($outputPath);
-            if (!is_dir($outputDir) && !mkdir($outputDir, 0o775, true) && !is_dir($outputDir)) {
+            if (!is_dir($outputDir) && !mkdir($outputDir, $this->directoryPermissions, true) && !is_dir($outputDir)) {
                 throw new \RuntimeException(\sprintf('Failed to create directory: %s', $outputDir));
             }
 
             $imagick->writeImage($outputPath);
+
+            if (null !== $this->filePermissions) {
+                chmod($outputPath, $this->filePermissions);
+            }
         } finally {
             $imagick->clear();
         }
