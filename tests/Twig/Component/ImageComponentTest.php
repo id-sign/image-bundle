@@ -44,9 +44,9 @@ class ImageComponentTest extends TestCase
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
 
-        $this->metadataReader->method('getDimensions')
-            ->with('uploads/photo.jpg')
-            ->willReturn(['width' => 1000, 'height' => 750]);
+        $this->metadataReader->method('calculateHeight')
+            ->with('uploads/photo.jpg', 800)
+            ->willReturn(600);
 
         $component->postMount();
 
@@ -59,7 +59,7 @@ class ImageComponentTest extends TestCase
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
 
-        $this->metadataReader->expects(self::never())->method('getDimensions');
+        $this->metadataReader->expects(self::never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -73,9 +73,9 @@ class ImageComponentTest extends TestCase
         $component->width = 800;
         $component->autoDimensions = true;
 
-        $this->metadataReader->method('getDimensions')
-            ->with('uploads/photo.jpg')
-            ->willReturn(['width' => 1000, 'height' => 750]);
+        $this->metadataReader->method('calculateHeight')
+            ->with('uploads/photo.jpg', 800)
+            ->willReturn(600);
 
         $component->postMount();
 
@@ -89,7 +89,7 @@ class ImageComponentTest extends TestCase
         $component->width = 800;
         $component->autoDimensions = false;
 
-        $this->metadataReader->expects(self::never())->method('getDimensions');
+        $this->metadataReader->expects(self::never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -104,7 +104,7 @@ class ImageComponentTest extends TestCase
         $component->height = 400;
         $component->autoDimensions = true;
 
-        $this->metadataReader->expects(self::never())->method('getDimensions');
+        $this->metadataReader->expects(self::never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -118,7 +118,7 @@ class ImageComponentTest extends TestCase
         $component->width = 120;
         $component->autoDimensions = true;
 
-        $this->metadataReader->expects(self::never())->method('getDimensions');
+        $this->metadataReader->expects(self::never())->method('calculateHeight');
 
         $component->postMount();
 

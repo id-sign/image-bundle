@@ -51,6 +51,21 @@ class ImageMetadataReader implements ResetInterface
         return $dimensions;
     }
 
+    /**
+     * Calculate proportional height for a given target width based on source aspect ratio.
+     * Returns null if source dimensions cannot be determined.
+     */
+    public function calculateHeight(string $src, int $width): ?int
+    {
+        $dimensions = $this->getDimensions($src);
+
+        if ($dimensions['width'] <= 0) {
+            return null;
+        }
+
+        return (int) round($dimensions['height'] * $width / $dimensions['width']);
+    }
+
     public function reset(): void
     {
         $this->cache = [];

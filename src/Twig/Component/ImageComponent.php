@@ -66,10 +66,7 @@ class ImageComponent
         $useAutoDimensions = $this->autoDimensions ?? $this->globalAutoDimensions;
 
         if (null === $this->height && $useAutoDimensions && !$this->isSvg()) {
-            $dimensions = $this->metadataReader->getDimensions($this->src);
-            if ($dimensions['width'] > 0) {
-                $this->resolvedHeight = (int) round($dimensions['height'] * $this->width / $dimensions['width']);
-            }
+            $this->resolvedHeight = $this->metadataReader->calculateHeight($this->src, $this->width);
         } else {
             $this->resolvedHeight = $this->height;
         }

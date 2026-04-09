@@ -78,6 +78,13 @@ services:
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
             $defaultWatermark: '%id_sign_image.default_watermark%'
 
+    # Twig Extension
+    IdSign\ImageBundle\Twig\ImageUrlExtension:
+        arguments:
+            $defaultQuality: '%id_sign_image.default_quality%'
+            $defaultWatermark: '%id_sign_image.default_watermark%'
+            $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
+
     # Command
     IdSign\ImageBundle\Command\PurgeCacheCommand:
         arguments:

@@ -48,8 +48,10 @@ src/
 │   ├── CacheStorageInterface.php
 │   ├── LocalFilesystemCacheStorage.php
 │   └── CachePathResolver.php
-├── Twig/Component/
-│   └── ImageComponent.php
+├── Twig/
+│   ├── ImageUrlExtension.php
+│   └── Component/
+│       └── ImageComponent.php
 └── Command/
     └── PurgeCacheCommand.php
 
@@ -174,7 +176,7 @@ Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onl
 
 `ImageMetadataReader` reads source image dimensions via Imagick. Cached as `meta.json` in the source image's cache directory (`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
 
-Used by `auto_dimensions` feature — when only `width` is provided, height is calculated from the source aspect ratio.
+Used by `auto_dimensions` feature — when only `width` is provided, height is calculated from the source aspect ratio. The `calculateHeight(string $src, int $width): ?int` method encapsulates the proportional height calculation — used by both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 
 ### Format negotiation
 
@@ -190,6 +192,19 @@ Used by `auto_dimensions` feature — when only `width` is provided, height is c
 - `generateFromRequest(Request $request, string $src, int $width, ...)` — negotiate format from Accept header
 
 Used for API responses, emails, or any context outside Twig templates.
+
+### Twig function `image_url()`
+
+`ImageUrlExtension` registers an `image_url()` Twig function for generating a single optimized image URL (as opposed to the `<twig:Image>` component which generates a full `<picture>` tag). Useful for og tags, emails, JSON-LD, or any context where a single URL is needed.
+
+**Parameters:** `src`, `width`, `height`, `fit`, `quality`, `format`, `watermark`, `autoDimensions` — mirrors the component props.
+
+**Format resolution:**
+- Explicit `format` parameter → use that format directly
+- No format + active request → negotiate from `Accept` header (same as `ImageUrlGenerator::generateFromRequest()`)
+- No format + no request (e.g. CLI) → fallback to `webp`
+
+**Watermark/quality/autoDimensions resolution** follows the same logic as `ImageComponent` — global defaults from config, overridable per call.
 
 ### Srcset generation
 
@@ -241,7 +256,7 @@ No HMAC, no Imagick processing.
 - Zero errors
 
 ### PHPUnit
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`, `ImageUrlExtension`
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (404), avif/webp format generation, watermark processing, SVG passthrough
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 

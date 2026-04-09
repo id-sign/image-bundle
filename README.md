@@ -429,6 +429,35 @@ class ImageApiController
 }
 ```
 
+### Twig function `image_url()`
+
+For contexts where you need a single image URL instead of a full `<picture>` tag — og tags, emails, JSON-LD, etc.:
+
+```twig
+{# Format negotiated from current request (AVIF > WebP > original) #}
+{{ image_url('uploads/photo.jpg', 800) }}
+
+{# Explicit format (best for og tags, emails — no content negotiation) #}
+{{ image_url('uploads/photo.jpg', 800, format='webp') }}
+
+{# Full control #}
+{{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright') }}
+
+{# Auto-calculate height from aspect ratio #}
+{{ image_url('uploads/photo.jpg', 800, autoDimensions=true, format='webp') }}
+```
+
+| Parameter        | Type          | Required | Description                                                       |
+|------------------|---------------|----------|-------------------------------------------------------------------|
+| `src`            | string        | yes      | Path relative to source directory                                 |
+| `width`          | int           | yes      | Output width in pixels                                            |
+| `height`         | int           | no       | Output height (auto-calculated if `autoDimensions` enabled)       |
+| `fit`            | string        | no       | `cover`, `contain`, or `scale-down`                               |
+| `quality`        | int           | no       | Output quality 1-100 (default from config)                        |
+| `format`         | string        | no       | Output format (`avif`, `webp`, `jpeg`, `png`). If omitted, negotiated from request |
+| `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default         |
+| `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config) |
+
 ## Development
 
 ```bash

@@ -134,7 +134,24 @@ php bin/console image:purge --modified-before=30 --force       # older than 30 d
 php bin/console image:purge --accessed-before=14 --force       # not accessed in 14 days
 ```
 
-### Programmatic URL generation
+### Twig function `image_url()`
+
+For single URL generation in Twig (og tags, emails, JSON-LD):
+
+```twig
+{# Negotiate format from request #}
+{{ image_url('uploads/photo.jpg', 800) }}
+
+{# Explicit format #}
+{{ image_url('uploads/photo.jpg', 800, format='webp') }}
+
+{# All options #}
+{{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright', autoDimensions=true) }}
+```
+
+Parameters mirror component props + `format` (string, optional — if omitted, negotiated from request Accept header).
+
+### Programmatic URL generation (PHP)
 
 ```php
 // Inject ImageUrlGenerator, then:
