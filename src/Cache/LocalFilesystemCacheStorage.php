@@ -35,7 +35,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
         $absolutePath = $this->getAbsolutePath($cachePath);
         $dir = \dirname($absolutePath);
 
-        if (!is_dir($dir) && !mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
+        if (!is_dir($dir) && !@mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
             throw new \RuntimeException(\sprintf('Failed to create directory: %s', $dir));
         }
 
