@@ -28,20 +28,31 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 
 ### Props
 
-| Prop             | Type          | Required | Description                                                       |
-|------------------|---------------|----------|-------------------------------------------------------------------|
-| `src`            | string        | yes      | Path relative to source directory                                 |
-| `width`          | int           | yes      | Display width in pixels                                           |
-| `height`         | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled)     |
-| `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down`                 |
-| `blur`           | bool          | no       | Inline blur placeholder                                           |
-| `quality`        | int           | no       | Output quality 1-100 (default from config)                        |
-| `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config) |
-| `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default         |
+| Prop             | Type          | Required | Description                                                                                    |
+|------------------|---------------|----------|------------------------------------------------------------------------------------------------|
+| `src`            | string        | yes      | Path relative to source directory                                                              |
+| `width`          | int           | yes      | Display width in pixels, also used for server-side resize                                      |
+| `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set             |
+| `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` — required for `height` to affect processing |
+| `blur`           | bool          | no       | Inline blur placeholder                                                                        |
+| `quality`        | int           | no       | Output quality 1-100 (default from config)                                                     |
+| `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config)                              |
+| `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default                                      |
 
 All other attributes pass through to `<img>`: `alt`, `class`, `id`, `loading`, `sizes`, `data-*`, `aria-*`, etc.
 
 Default: `decoding="async"`. No default `loading`.
+
+### Height semantics (Next.js-style)
+
+`height` without `fit` is a **layout hint only** — the server resizes by `width` only, preserving source aspect ratio.
+`height` affects server-side processing only when `fit` is explicitly set.
+
+| Props                        | Server behavior                                      |
+|------------------------------|------------------------------------------------------|
+| `width` only                 | Resize by width, proportional height                 |
+| `width` + `height`, no `fit` | Resize by width only, `height` = HTML attribute only |
+| `width` + `height` + `fit`   | Resize/crop using both dimensions                    |
 
 ### Output
 

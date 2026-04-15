@@ -132,14 +132,38 @@ class ImageUrlExtensionTest extends TestCase
         self::assertNotSame($url1, $url2);
     }
 
-    public function testAutoDimensionsCalculatesHeight(): void
+    public function testAutoDimensionsCalculatesHeightWithFit(): void
+    {
+        $this->metadataReader->method('calculateHeight')
+            ->willReturn(600);
+
+        $url = $this->extension->imageUrl('photo.jpg', 800, fit: 'contain', autoDimensions: true, format: 'webp');
+
+        self::assertStringContainsString('_600_', $url);
+    }
+
+    public function testAutoDimensionsWithoutFitDoesNotAffectUrl(): void
     {
         $this->metadataReader->method('calculateHeight')
             ->willReturn(600);
 
         $url = $this->extension->imageUrl('photo.jpg', 800, autoDimensions: true, format: 'webp');
 
-        self::assertStringContainsString('_600_', $url);
+        self::assertStringNotContainsString('_600_', $url);
+    }
+
+    public function testHeightWithoutFitDoesNotAffectUrl(): void
+    {
+        $url = $this->extension->imageUrl('photo.jpg', 800, height: 400, format: 'webp');
+
+        self::assertStringNotContainsString('_400_', $url);
+    }
+
+    public function testHeightWithFitAffectsUrl(): void
+    {
+        $url = $this->extension->imageUrl('photo.jpg', 800, height: 400, fit: 'cover', format: 'webp');
+
+        self::assertStringContainsString('_400_', $url);
     }
 
     public function testAutoDimensionsSkippedWhenHeightProvided(): void
@@ -156,7 +180,7 @@ class ImageUrlExtensionTest extends TestCase
             false,
         );
 
-        $url = $extension->imageUrl('photo.jpg', 800, height: 400, autoDimensions: true, format: 'webp');
+        $url = $extension->imageUrl('photo.jpg', 800, height: 400, fit: 'contain', autoDimensions: true, format: 'webp');
 
         self::assertStringContainsString('_400_', $url);
     }
@@ -194,7 +218,7 @@ class ImageUrlExtensionTest extends TestCase
         $this->metadataReader->method('calculateHeight')
             ->willReturn(600);
 
-        $url = $extension->imageUrl('photo.jpg', 800, format: 'webp');
+        $url = $extension->imageUrl('photo.jpg', 800, fit: 'contain', format: 'webp');
 
         self::assertStringContainsString('_600_', $url);
     }

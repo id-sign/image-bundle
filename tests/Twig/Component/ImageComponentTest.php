@@ -125,6 +125,67 @@ class ImageComponentTest extends TestCase
         self::assertNull($component->getResolvedHeight());
     }
 
+    public function testHeightWithoutFitIsNotUsedForProcessing(): void
+    {
+        $signer = new UrlSigner('test-secret');
+        $resolver = new CachePathResolver($signer);
+        $srcsetGenerator = new SrcsetGenerator($resolver, [640, 750, 828, 1080, 1200, 1920, 2048, 3840], '/_image');
+
+        $component = new ImageComponent(
+            $srcsetGenerator,
+            $resolver,
+            $this->createStub(BlurPlaceholderGenerator::class),
+            $this->createStub(ImageMetadataReader::class),
+            80,
+            ['avif', 'webp'],
+            '/_image',
+            false,
+            false,
+            null,
+        );
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $component->height = 400;
+
+        $component->postMount();
+
+        self::assertSame(400, $component->getResolvedHeight());
+
+        $fallbackSrc = $component->getFallbackSrc();
+        self::assertStringNotContainsString('_400_', $fallbackSrc);
+    }
+
+    public function testHeightWithFitIsUsedForProcessing(): void
+    {
+        $signer = new UrlSigner('test-secret');
+        $resolver = new CachePathResolver($signer);
+        $srcsetGenerator = new SrcsetGenerator($resolver, [640, 750, 828, 1080, 1200, 1920, 2048, 3840], '/_image');
+
+        $component = new ImageComponent(
+            $srcsetGenerator,
+            $resolver,
+            $this->createStub(BlurPlaceholderGenerator::class),
+            $this->createStub(ImageMetadataReader::class),
+            80,
+            ['avif', 'webp'],
+            '/_image',
+            false,
+            false,
+            null,
+        );
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $component->height = 400;
+        $component->fit = 'cover';
+
+        $component->postMount();
+
+        self::assertSame(400, $component->getResolvedHeight());
+
+        $fallbackSrc = $component->getFallbackSrc();
+        self::assertStringContainsString('_400_', $fallbackSrc);
+    }
+
     public function testSvgSrcUsesRoutePrefix(): void
     {
         $signer = new UrlSigner('test-secret');

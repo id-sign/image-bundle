@@ -53,16 +53,18 @@ class ImageUrlExtension extends AbstractExtension
             $resolvedHeight = $this->metadataReader->calculateHeight($src, $width);
         }
 
+        $processingHeight = null !== $fit ? $resolvedHeight : null;
+
         if (null !== $format) {
-            return $this->urlGenerator->generate($src, $width, $resolvedHeight, $fit, $resolvedQuality, $format, $resolvedWatermark);
+            return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, $format, $resolvedWatermark);
         }
 
         $request = $this->requestStack->getCurrentRequest();
 
         if (null !== $request) {
-            return $this->urlGenerator->generateFromRequest($request, $src, $width, $resolvedHeight, $fit, $resolvedQuality, $resolvedWatermark);
+            return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $resolvedQuality, $resolvedWatermark);
         }
 
-        return $this->urlGenerator->generate($src, $width, $resolvedHeight, $fit, $resolvedQuality, 'webp', $resolvedWatermark);
+        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, 'webp', $resolvedWatermark);
     }
 }

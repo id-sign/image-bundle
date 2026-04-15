@@ -35,6 +35,7 @@ class ImageComponent
 
     private int $resolvedQuality;
     private ?int $resolvedHeight = null;
+    private ?int $processingHeight = null;
     private ?string $resolvedWatermark = null;
 
     public function __construct(
@@ -70,6 +71,8 @@ class ImageComponent
         } else {
             $this->resolvedHeight = $this->height;
         }
+
+        $this->processingHeight = null !== $this->fit ? $this->resolvedHeight : null;
     }
 
     public function isSvg(): bool
@@ -100,7 +103,7 @@ class ImageComponent
             $srcset = $this->srcsetGenerator->generateSrcsetString(
                 $this->src,
                 $this->width,
-                $this->resolvedHeight,
+                $this->processingHeight,
                 $this->fit,
                 $this->resolvedQuality,
                 $format,
@@ -110,7 +113,7 @@ class ImageComponent
             $mainPath = $this->cachePathResolver->resolve(
                 $this->src,
                 $this->width,
-                $this->resolvedHeight,
+                $this->processingHeight,
                 $this->fit,
                 $this->resolvedQuality,
                 $format,
@@ -138,7 +141,7 @@ class ImageComponent
         $cachePath = $this->cachePathResolver->resolve(
             $this->src,
             $this->width,
-            $this->resolvedHeight,
+            $this->processingHeight,
             $this->fit,
             $this->resolvedQuality,
             $this->getFallbackFormat(),
