@@ -40,6 +40,11 @@ class ImagickProcessor implements ImageProcessorInterface
 
             $origWidth = $imagick->getImageWidth();
             $origHeight = $imagick->getImageHeight();
+
+            if (0 === $width) {
+                $width = $origWidth;
+            }
+
             $targetHeight = $height ?? $this->proportionalHeight($origWidth, $origHeight, $width);
 
             match ($fit) {
@@ -56,6 +61,11 @@ class ImagickProcessor implements ImageProcessorInterface
             $imagick->stripImage();
 
             $imagickFormat = self::FORMAT_MAP[$format] ?? throw new \InvalidArgumentException(\sprintf('Unsupported format: %s', $format));
+
+            if ('JPEG' === $imagickFormat) {
+                $this->flattenAlpha($imagick);
+            }
+
             $imagick->setImageFormat($imagickFormat);
             $imagick->setImageCompressionQuality($quality);
 
@@ -167,6 +177,19 @@ class ImagickProcessor implements ImageProcessorInterface
             'bottom-right' => [$imgW - $wmW - $margin, $imgH - $wmH - $margin],
             default => [$imgW - $wmW - $margin, $imgH - $wmH - $margin],
         };
+    }
+
+    /**
+     * @throws \ImagickException
+     */
+    private function flattenAlpha(\Imagick $imagick): void
+    {
+        if (!$imagick->getImageAlphaChannel()) {
+            return;
+        }
+
+        $imagick->setImageBackgroundColor(new \ImagickPixel('white'));
+        $imagick->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE);
     }
 
     /**
