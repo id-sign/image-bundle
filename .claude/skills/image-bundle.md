@@ -31,7 +31,7 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 | Prop             | Type          | Required | Description                                                                                    |
 |------------------|---------------|----------|------------------------------------------------------------------------------------------------|
 | `src`            | string        | yes      | Path relative to source directory                                                              |
-| `width`          | int           | yes      | Display width in pixels, also used for server-side resize                                      |
+| `width`          | int           | yes      | Intrinsic image width in px (not display size) — see "Picking width" below                     |
 | `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set             |
 | `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` — required for `height` to affect processing |
 | `blur`           | bool          | no       | Inline blur placeholder                                                                        |
@@ -42,6 +42,60 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 All other attributes pass through to `<img>`: `alt`, `class`, `id`, `loading`, `sizes`, `data-*`, `aria-*`, etc.
 
 Default: `decoding="async"`. No default `loading`.
+
+### Picking width
+
+`width` is the **intrinsic width of the generated image file**, not the rendered size on screen. It is required and
+must be > 0 — omitting it (or passing `0`) throws `InvalidArgumentException` at render time, applies to SVG as well.
+Pick a value that matches the largest pixel size the image will ever render at.
+
+Watch out for:
+
+- **`width` smaller than smallest `device_sizes` entry → no responsive srcset.** `SrcsetGenerator` only emits
+  breakpoints ≤ `width`. Default smallest breakpoint is 640, so `width=500` produces a single-candidate srcset. On
+  wide viewports the image gets stretched and looks blurry.
+
+How to pick:
+
+- **Full-bleed image (`w-full`, `sizes="100vw"`):** use the largest realistic render size — usually the largest relevant
+  `device_sizes` entry (e.g. `1920` or `2048`). Browser then picks from all breakpoints ≤ width.
+- **Fixed-size image in a column:** set `width` to the max CSS width the image can reach (times DPR if you want crisp
+  retina — typically 2×). Add `sizes` matching the layout, e.g. `sizes="(min-width: 1024px) 500px, 100vw"`.
+- **Unknown source dimensions:** pick width based on layout anyway; `autoDimensions="true"` fills `height` from source
+  aspect ratio. Width still has to come from you.
+- **SVG:** width is still required (uniform prop contract) but only affects the `<img width="…">` HTML attribute. Pick
+  the layout size you want reserved for CLS — no server-side processing happens for SVG.
+
+Rule of thumb: `width` ≥ largest rendered pixel size the image will reach across breakpoints. Undersized `width` =
+blurry image, oversized `width` = wasted bandwidth on mobile (but srcset mitigates this).
+
+### Picking sizes
+
+`sizes` tells the browser how wide the image will render at each viewport size — the browser multiplies that against
+DPR and picks the smallest srcset candidate ≥ that target. Without a correct `sizes`, responsive `srcset` is wasted
+bandwidth: the default `sizes="100vw"` makes every browser download the largest candidate regardless of actual render
+size.
+
+Always set `sizes` to match the real CSS layout. Common patterns:
+
+- **Full-bleed (edge-to-edge):** `sizes="100vw"` (bundle default — only correct if the image truly spans the viewport).
+- **Fixed max-width container with full-bleed mobile:** `sizes="(min-width: 1280px) 1280px, 100vw"`.
+- **Grid column, breakpoint-dependent:** `sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"`.
+- **Fixed pixel size regardless of viewport:** `sizes="400px"`.
+
+Must align with `width`:
+
+- `sizes` tells the browser the target render width → browser picks candidate from srcset
+- `width` caps the top of srcset → the largest candidate the browser has to pick from
+- Mismatch example: `sizes="100vw"` + `width="500"` on a 1920px desktop → browser wants 1920w but srcset max is 500w →
+  stretched. Fix: raise `width` to match the largest viewport the image will reach, OR narrow `sizes` to reflect the
+  real layout (e.g. `sizes="500px"` if the image is actually capped at 500px CSS).
+
+Pass `sizes` as any other attribute — it propagates to every `<source>` and `<img>` via `{{ attributes }}`:
+
+```twig
+<twig:Image src="uploads/hero.jpg" width="1920" sizes="(min-width: 1280px) 1280px, 100vw" alt="…" class="w-full h-auto" />
+```
 
 ### Height semantics (Next.js-style)
 

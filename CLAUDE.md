@@ -193,6 +193,12 @@ watermark profiles = different cached files.
 **Props:** `src`, `width`, `height` (optional), `fit` (optional), `blur` (optional bool), `quality` (optional int),
 `autoDimensions` (optional bool|null), `watermark` (optional string|false|null)
 
+**Width is required and must be > 0** — enforced via `InvalidArgumentException` in `postMount()`. Applies to SVG too
+(uniform prop contract). Rationale: `width=0` produces `srcset="… 0w"`, which is a parse error per HTML spec (`w`
+descriptor must be > 0) — browsers drop all `<source>` candidates and fall through to `<img src>`, silently disabling
+AVIF. Better to fail loudly than silently degrade. The v0.1.12 "fallback width from source" in `ImagickProcessor` was
+removed for the same reason (it hid the client-side breakage).
+
 **Watermark prop resolution:**
 
 - `watermark="profile_name"` — use this specific profile

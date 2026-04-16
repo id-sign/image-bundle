@@ -40,11 +40,6 @@ class ImagickProcessor implements ImageProcessorInterface
 
             $origWidth = $imagick->getImageWidth();
             $origHeight = $imagick->getImageHeight();
-
-            if (0 === $width) {
-                $width = $origWidth;
-            }
-
             $targetHeight = $height ?? $this->proportionalHeight($origWidth, $origHeight, $width);
 
             match ($fit) {

@@ -56,6 +56,10 @@ class ImageComponent
     #[PostMount]
     public function postMount(): void
     {
+        if ($this->width <= 0) {
+            throw new \InvalidArgumentException(\sprintf('The "width" prop is required and must be > 0 on <twig:Image src="%s" />. It is the intrinsic width of the generated image file in pixels — pick the largest size the image will ever render at. See docs for guidance.', $this->src));
+        }
+
         $this->resolvedQuality = $this->quality ?? $this->defaultQuality;
 
         $this->resolvedWatermark = match (true) {

@@ -178,7 +178,7 @@ Output:
 | Attribute        | Type          | Required | Description                                                                  |
 |------------------|---------------|----------|------------------------------------------------------------------------------|
 | `src`            | string        | yes      | Path to source image (relative to source directory)                          |
-| `width`          | int           | yes      | Display width in pixels                                                      |
+| `width`          | int           | yes      | Intrinsic image width in px (not display size) — required, see below         |
 | `height`         | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled)                |
 | `fit`            | string        | no       | Resize mode: `cover`, `contain`, or `scale-down`                             |
 | `blur`           | bool          | no       | Show blur placeholder (overrides global setting)                             |
@@ -195,8 +195,46 @@ filesystem. For SVG files, no processing is applied — the image is served dire
 
 ### `width`
 
-The display width of the image in pixels. This value is used for the `width` HTML attribute (CLS prevention), as the
-main size in srcset, and as the upper bound for responsive breakpoints.
+The **intrinsic width of the generated image file** in pixels — not the rendered CSS size. Used as the `width` HTML
+attribute (CLS prevention), as the main size in srcset, and as the upper bound for responsive breakpoints
+(`SrcsetGenerator` only emits `device_sizes` breakpoints ≤ `width`).
+
+`width` is required and must be > 0 — omitting it (or passing `0`) throws `InvalidArgumentException` at render time,
+applies to SVG as well. Pick a value that matches the largest pixel size the image will ever render at.
+
+**Picking the right value:**
+
+- **Full-bleed image** (`class="w-full"`, `sizes="100vw"`): use the largest realistic render size, typically the largest
+  relevant `device_sizes` entry (e.g. `1920` or `2048`). The browser picks from all breakpoints ≤ width.
+- **Fixed-size image in a column:** set `width` to the max CSS width the image can reach, optionally 2× for retina.
+  Pair with a matching `sizes`, e.g. `sizes="(min-width: 1024px) 500px, 100vw"`.
+- **`width` smaller than smallest `device_sizes` entry (default `640`)** produces a single-candidate srcset — on wide
+  viewports the image gets stretched and looks blurry. Raise `width`, or narrow `sizes` to reflect the real layout.
+- **SVG:** `width` only affects the `<img width="…">` HTML attribute — no server-side processing happens. Pick the
+  layout size you want reserved for CLS.
+
+Mismatch between `width` and `sizes` wastes bandwidth or causes blurry rendering — see [Picking sizes](#picking-sizes)
+below.
+
+### Picking sizes
+
+The `sizes` attribute tells the browser how wide the image will render at each viewport size. The browser multiplies
+that against DPR and picks the smallest srcset candidate ≥ the target. Without a correct `sizes`, responsive srcset is
+wasted bandwidth: the bundle default `sizes="100vw"` makes every browser download the largest candidate regardless of
+actual render size.
+
+Set `sizes` to match the real CSS layout. Common patterns:
+
+- **Full-bleed (edge-to-edge):** `sizes="100vw"` (bundle default — only correct if the image truly spans the viewport).
+- **Fixed max-width container with full-bleed mobile:** `sizes="(min-width: 1280px) 1280px, 100vw"`.
+- **Grid column, breakpoint-dependent:** `sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"`.
+- **Fixed pixel size:** `sizes="400px"`.
+
+Pass `sizes` as any other attribute — it propagates to every `<source>` and `<img>`:
+
+```twig
+<twig:Image src="uploads/hero.jpg" width="1920" sizes="(min-width: 1280px) 1280px, 100vw" alt="Hero" class="w-full h-auto" />
+```
 
 ### `height`
 

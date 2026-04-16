@@ -38,6 +38,30 @@ class ImageComponentTest extends TestCase
         );
     }
 
+    public function testPostMountThrowsWhenWidthIsZero(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'uploads/photo.jpg';
+        $this->metadataReader->expects(self::never())->method('calculateHeight');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('uploads/photo.jpg');
+
+        $component->postMount();
+    }
+
+    public function testPostMountThrowsWhenWidthIsNegative(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = -1;
+        $this->metadataReader->expects(self::never())->method('calculateHeight');
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $component->postMount();
+    }
+
     public function testAutoDimensionsNullFallsBackToGlobalEnabled(): void
     {
         $component = $this->createComponent(globalAutoDimensions: true);
