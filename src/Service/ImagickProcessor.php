@@ -113,10 +113,10 @@ class ImagickProcessor implements ImageProcessorInterface
     private function proportionalHeight(int $origWidth, int $origHeight, int $targetWidth): int
     {
         if (0 === $origWidth) {
-            return 0;
+            return 1;
         }
 
-        return (int) round($origHeight * $targetWidth / $origWidth);
+        return max(1, (int) round($origHeight * $targetWidth / $origWidth));
     }
 
     /**
