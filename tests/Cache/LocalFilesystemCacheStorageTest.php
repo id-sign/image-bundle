@@ -115,6 +115,106 @@ class LocalFilesystemCacheStorageTest extends TestCase
         self::assertSame(0, $this->storage->deleteBySource('nonexistent.jpg'));
     }
 
+    public function testGetAbsolutePathRejectsDotDotSegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->storage->getAbsolutePath('../escape.jpg');
+    }
+
+    public function testGetAbsolutePathRejectsEmptySegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->storage->getAbsolutePath('foo//bar.jpg');
+    }
+
+    public function testHasReturnsFalseForTraversalAttempt(): void
+    {
+        self::assertFalse($this->storage->has('../escape.jpg'));
+    }
+
+    public function testDeleteIsSilentForTraversalAttempt(): void
+    {
+        $this->storage->delete('../escape.jpg');
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testAtomicWriteSurvivesCrossFilesystemTmp(): void
+    {
+        // Simulate cross-FS tmp by using a tmpfile outside the cache dir
+        $tmpFile = tempnam(sys_get_temp_dir(), 'id_sign_image_atomic_');
+        self::assertIsString($tmpFile);
+        file_put_contents($tmpFile, 'payload');
+
+        $this->storage->write('ab/cross-fs.avif', $tmpFile);
+
+        self::assertTrue($this->storage->has('ab/cross-fs.avif'));
+        self::assertSame('payload', file_get_contents($this->cacheDir.'/ab/cross-fs.avif'));
+        self::assertFalse(is_file($tmpFile));
+    }
+
+    public function testWriteLockedInvokesWriterAndCommits(): void
+    {
+        $called = false;
+
+        $this->storage->writeLocked('ab/locked.webp', static function (string $tmpPath) use (&$called): void {
+            $called = true;
+            file_put_contents($tmpPath, 'locked-payload');
+        });
+
+        self::assertTrue($called);
+        self::assertTrue($this->storage->has('ab/locked.webp'));
+        self::assertSame('locked-payload', file_get_contents($this->cacheDir.'/ab/locked.webp'));
+    }
+
+    public function testWriteLockedSkipsWriterWhenAlreadyCached(): void
+    {
+        // Prime the cache
+        $this->storage->writeLocked('ab/primed.webp', static function (string $tmpPath): void {
+            file_put_contents($tmpPath, 'first');
+        });
+
+        $calledAgain = false;
+
+        // Second call with same path — writer must NOT run, cache already satisfies the request.
+        $this->storage->writeLocked('ab/primed.webp', static function (string $tmpPath) use (&$calledAgain): void {
+            $calledAgain = true;
+            file_put_contents($tmpPath, 'second');
+        });
+
+        self::assertFalse($calledAgain);
+        self::assertSame('first', file_get_contents($this->cacheDir.'/ab/primed.webp'));
+    }
+
+    public function testWriteLockedCleansIntermediateOnWriterFailure(): void
+    {
+        try {
+            $this->storage->writeLocked('ab/fail.webp', static function (): void {
+                throw new \RuntimeException('writer exploded');
+            });
+            self::fail('Expected exception was not thrown');
+        } catch (\RuntimeException $e) {
+            self::assertSame('writer exploded', $e->getMessage());
+        }
+
+        self::assertFalse($this->storage->has('ab/fail.webp'));
+
+        // No leftover intermediate tmp files
+        $leftovers = glob($this->cacheDir.'/ab/.*.tmp');
+        self::assertSame([], $leftovers ?: []);
+    }
+
+    public function testWriteLockedRejectsTraversalPath(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->storage->writeLocked('../escape.webp', static function (string $tmpPath): void {
+            file_put_contents($tmpPath, 'x');
+        });
+    }
+
     private function createCacheFile(string $path): void
     {
         $absolutePath = $this->cacheDir.'/'.$path;

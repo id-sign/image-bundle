@@ -7,10 +7,12 @@ namespace IdSign\ImageBundle\Controller;
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Service\ImageProcessorInterface;
+use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\UrlSigner;
 use IdSign\ImageBundle\Service\WatermarkRegistry;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
@@ -24,7 +26,7 @@ class ImageController
         private readonly UrlSigner $urlSigner,
         private readonly ImageSourceInterface $imageSource,
         private readonly WatermarkRegistry $watermarkRegistry,
-        private readonly string $tmpDir,
+        private readonly SourceSizeValidator $sourceSizeValidator,
     ) {
     }
 
@@ -40,23 +42,18 @@ class ImageController
     private function serveSvg(string $src): Response
     {
         if (!$this->imageSource->exists($src)) {
-            return new Response('Source image not found.', Response::HTTP_NOT_FOUND);
+            return new JsonResponse(['error' => 'Source image not found.'], Response::HTTP_NOT_FOUND);
         }
 
         if (!$this->cacheStorage->has($src)) {
-            $tmpFile = tempnam($this->tmpDir, 'id_sign_image_');
-            if (false === $tmpFile) {
-                return new Response('Failed to create temporary file.', Response::HTTP_INTERNAL_SERVER_ERROR);
-            }
+            $sourceFile = $this->imageSource->getAbsolutePath($src);
+            $this->sourceSizeValidator->assertFits($sourceFile);
 
-            try {
-                copy($this->imageSource->getAbsolutePath($src), $tmpFile);
-                $this->cacheStorage->write($src, $tmpFile);
-            } finally {
-                if (is_file($tmpFile)) {
-                    unlink($tmpFile);
+            $this->cacheStorage->writeLocked($src, static function (string $tmpPath) use ($sourceFile): void {
+                if (!copy($sourceFile, $tmpPath)) {
+                    throw new \RuntimeException(\sprintf('Failed to copy SVG source %s to %s', $sourceFile, $tmpPath));
                 }
-            }
+            });
         }
 
         return $this->buildResponse($src);
@@ -66,34 +63,30 @@ class ImageController
     {
         $params = $this->cachePathResolver->parse($path);
         if (null === $params) {
-            return new Response('Invalid image path.', Response::HTTP_BAD_REQUEST);
+            return new JsonResponse(['error' => 'Invalid image path.'], Response::HTTP_BAD_REQUEST);
         }
 
         if (!$this->urlSigner->verify($params['signature'], $params['src'], $params['width'], $params['height'], $params['fit'], $params['quality'], $params['watermark'])) {
-            return new Response('Invalid signature.', Response::HTTP_FORBIDDEN);
+            return new JsonResponse(['error' => 'Invalid signature.'], Response::HTTP_FORBIDDEN);
         }
 
         if (!$this->imageSource->exists($params['src'])) {
-            return new Response('Source image not found.', Response::HTTP_NOT_FOUND);
+            return new JsonResponse(['error' => 'Source image not found.'], Response::HTTP_NOT_FOUND);
         }
 
         if (null !== $params['watermark'] && !$this->watermarkRegistry->has($params['watermark'])) {
-            return new Response(\sprintf('Unknown watermark profile: %s', $params['watermark']), Response::HTTP_BAD_REQUEST);
+            return new JsonResponse(['error' => \sprintf('Unknown watermark profile: %s', $params['watermark'])], Response::HTTP_BAD_REQUEST);
         }
 
         if (!$this->cacheStorage->has($path)) {
-            $tmpFile = tempnam($this->tmpDir, 'id_sign_image_');
-            if (false === $tmpFile) {
-                return new Response('Failed to create temporary file.', Response::HTTP_INTERNAL_SERVER_ERROR);
-            }
+            $sourceFile = $this->imageSource->getAbsolutePath($params['src']);
+            $watermark = null !== $params['watermark'] ? $this->watermarkRegistry->get($params['watermark']) : null;
+            $processor = $this->processor;
 
-            try {
-                $sourceFile = $this->imageSource->getAbsolutePath($params['src']);
-                $watermark = null !== $params['watermark'] ? $this->watermarkRegistry->get($params['watermark']) : null;
-
-                $this->processor->process(
+            $this->cacheStorage->writeLocked($path, static function (string $tmpPath) use ($processor, $sourceFile, $params, $watermark): void {
+                $processor->process(
                     $sourceFile,
-                    $tmpFile,
+                    $tmpPath,
                     $params['width'],
                     $params['height'],
                     $params['fit'],
@@ -101,12 +94,7 @@ class ImageController
                     $params['quality'],
                     $watermark,
                 );
-                $this->cacheStorage->write($path, $tmpFile);
-            } finally {
-                if (is_file($tmpFile)) {
-                    unlink($tmpFile);
-                }
-            }
+            });
         }
 
         return $this->buildResponse($path);

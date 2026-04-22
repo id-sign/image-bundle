@@ -21,7 +21,9 @@ class SrcsetGenerator
     /**
      * Generate srcset entries for an image.
      *
-     * Only includes breakpoints <= the specified width.
+     * Only includes breakpoints strictly < the specified width. The main width itself
+     * is appended separately by the caller (ImageComponent), so we skip breakpoints
+     * equal to width to avoid duplicate srcset entries.
      *
      * @return list<array{url: string, width: int}>
      */
@@ -38,7 +40,7 @@ class SrcsetGenerator
         $entries = [];
 
         foreach ($this->deviceSizes as $breakpoint) {
-            if ($breakpoint > $width) {
+            if ($breakpoint >= $width) {
                 continue;
             }
 

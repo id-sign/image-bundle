@@ -22,6 +22,22 @@ interface CacheStorageInterface
     public function write(string $cachePath, string $sourcePath): void;
 
     /**
+     * Acquire a per-variant lock, re-check cache, and invoke $writer to produce the file
+     * if still missing. Protects against thundering herd — N concurrent requests for the
+     * same uncached variant cause only one write; others block on the lock and re-serve
+     * the produced file on retry.
+     *
+     * Implementations may skip the lock if the underlying backend does not support it
+     * cheaply (e.g. a remote-storage backend may accept best-effort concurrent writes).
+     *
+     * @param callable(string): void $writer Callback receiving an absolute path of a tmp file
+     *                                       inside the target directory. Must write the full
+     *                                       variant content to that path. Atomic commit to the
+     *                                       final cache location is handled by the storage.
+     */
+    public function writeLocked(string $cachePath, callable $writer): void;
+
+    /**
      * Delete a cached variant.
      */
     public function delete(string $cachePath): void;

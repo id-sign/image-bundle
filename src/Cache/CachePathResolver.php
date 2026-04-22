@@ -52,7 +52,7 @@ class CachePathResolver
      */
     public function parse(string $path): ?array
     {
-        if (!preg_match('#^(.+)/([a-f0-9]{16})_(\d+)_(auto|\d+)_(none|cover|contain|scale-down)_(\d+)(?:_wm-([a-zA-Z0-9_-]+))?\.(\w+)$#', $path, $matches)) {
+        if (!preg_match('#^(.+)/([a-f0-9]{16})_(\d+)_(auto|\d+)_(none|cover|contain|scale-down)_(\d+)(?:_wm-([a-zA-Z0-9_-]+))?\.(avif|webp|jpeg|jpg|png)$#', $path, $matches)) {
             return null;
         }
 

@@ -86,6 +86,27 @@ class CachePathResolverTest extends TestCase
         self::assertNull($this->resolver->parse(''));
     }
 
+    public function testParseRejectsUnknownFormat(): void
+    {
+        // Regex restricts format to the supported set — an unsupported extension must
+        // be rejected at parse time, not forwarded to the processor (which would 500).
+        $validPath = $this->resolver->resolve('photo.jpg', 800, null, null, 80, 'webp');
+        $tampered = preg_replace('/\.webp$/', '.xyz', $validPath);
+        self::assertIsString($tampered);
+
+        self::assertNull($this->resolver->parse($tampered));
+    }
+
+    public function testParseRejectsUppercaseFormat(): void
+    {
+        // Bundle always emits lowercase format extensions; uppercase is treated as tampering.
+        $validPath = $this->resolver->resolve('photo.jpg', 800, null, null, 80, 'webp');
+        $tampered = preg_replace('/\.webp$/', '.WEBP', $validPath);
+        self::assertIsString($tampered);
+
+        self::assertNull($this->resolver->parse($tampered));
+    }
+
     public function testParseRoundtripsWithVerify(): void
     {
         $path = $this->resolver->resolve('deep/nested/photo.jpg', 1080, 720, 'contain', 90, 'avif');

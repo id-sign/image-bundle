@@ -7,6 +7,7 @@ namespace IdSign\ImageBundle\Service;
 class ImagickProcessor implements ImageProcessorInterface
 {
     public function __construct(
+        private readonly SourceSizeValidator $sourceSizeValidator,
         private readonly ?int $filePermissions,
         private readonly int $directoryPermissions,
     ) {
@@ -33,6 +34,8 @@ class ImagickProcessor implements ImageProcessorInterface
         int $quality,
         ?WatermarkOptions $watermark = null,
     ): void {
+        $this->sourceSizeValidator->assertFits($sourcePath);
+
         $imagick = new \Imagick($sourcePath);
 
         try {
@@ -53,6 +56,13 @@ class ImagickProcessor implements ImageProcessorInterface
                 $this->applyWatermark($imagick, $watermark);
             }
 
+            // Normalize to sRGB before stripping metadata. stripImage() drops the ICC profile;
+            // for non-sRGB sources (AdobeRGB, Display P3 from phones/pro cameras) this would
+            // leave pixel values reinterpreted against the default sRGB gamut, producing visibly
+            // shifted colors. transformImageColorspace() is a no-op when the image is already sRGB
+            // (the dominant case on the web), so this is cheap for the 99 % case and correct for
+            // the 1 % where it matters.
+            $imagick->transformImageColorspace(\Imagick::COLORSPACE_SRGB);
             $imagick->stripImage();
 
             $imagickFormat = self::FORMAT_MAP[$format] ?? throw new \InvalidArgumentException(\sprintf('Unsupported format: %s', $format));

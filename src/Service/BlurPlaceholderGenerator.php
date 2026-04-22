@@ -14,6 +14,7 @@ class BlurPlaceholderGenerator implements ResetInterface
 
     public function __construct(
         private readonly ImageSourceInterface $imageSource,
+        private readonly SourceSizeValidator $sourceSizeValidator,
         private readonly string $cacheDirectory,
         private readonly int $blurSize,
         private readonly int $blurQuality,
@@ -57,9 +58,17 @@ class BlurPlaceholderGenerator implements ResetInterface
     private function createBlurDataUri(string $src): string
     {
         $sourcePath = $this->imageSource->getAbsolutePath($src);
-        $imagick = new \Imagick($sourcePath);
+        $this->sourceSizeValidator->assertFits($sourcePath);
+
+        $imagick = new \Imagick();
 
         try {
+            // jpeg:size hints libjpeg to decode at roughly this target, letting it use
+            // IDCT scaling (1/2, 1/4, 1/8) instead of decoding the full image. Ineffective
+            // for non-JPEG inputs but harmless — Imagick silently ignores the hint.
+            $hint = ($this->blurSize * 8).'x';
+            $imagick->setOption('jpeg:size', $hint);
+            $imagick->readImage($sourcePath);
             $imagick->thumbnailImage($this->blurSize, 0);
             $imagick->setImageFormat('JPEG');
             $imagick->setImageCompressionQuality($this->blurQuality);

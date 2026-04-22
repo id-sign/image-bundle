@@ -38,8 +38,9 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
         $container->setParameter('id_sign_image.watermarks', $config['watermarks']);
         $container->setParameter('id_sign_image.file_permissions', $config['file_permissions']);
         $container->setParameter('id_sign_image.directory_permissions', $config['directory_permissions']);
-        $container->setParameter('id_sign_image.tmp_dir', $config['tmp_dir'] ?? sys_get_temp_dir());
         $container->setParameter('id_sign_image.auto_dimensions', $config['auto_dimensions']);
+        $container->setParameter('id_sign_image.max_width', $config['max_width']);
+        $container->setParameter('id_sign_image.max_source_bytes', $config['max_source_bytes']);
         $container->setParameter('id_sign_image.serve_mode', $config['serve_mode']);
         $container->setParameter('id_sign_image.route_prefix', $config['route_prefix']);
 

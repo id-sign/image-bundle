@@ -32,4 +32,30 @@ class LocalFilesystemSourceTest extends TestCase
 
         self::assertSame($expected, $this->source->getAbsolutePath('test.jpg'));
     }
+
+    public function testGetAbsolutePathRejectsDotDotSegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->getAbsolutePath('../Source/LocalFilesystemSourceTest.php');
+    }
+
+    public function testGetAbsolutePathRejectsEmbeddedDotDotSegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->getAbsolutePath('photos/../../README.md');
+    }
+
+    public function testGetAbsolutePathRejectsEmptySegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->getAbsolutePath('photos//test.jpg');
+    }
+
+    public function testExistsReturnsFalseForTraversalAttempt(): void
+    {
+        self::assertFalse($this->source->exists('../Source/LocalFilesystemSourceTest.php'));
+    }
 }

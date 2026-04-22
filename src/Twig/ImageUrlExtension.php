@@ -19,6 +19,7 @@ class ImageUrlExtension extends AbstractExtension
         private readonly int $defaultQuality,
         private readonly ?string $defaultWatermark,
         private readonly bool $globalAutoDimensions,
+        private readonly int $maxWidth,
     ) {
     }
 
@@ -39,6 +40,14 @@ class ImageUrlExtension extends AbstractExtension
         string|false|null $watermark = null,
         ?bool $autoDimensions = null,
     ): string {
+        if ($width <= 0) {
+            throw new \InvalidArgumentException(\sprintf('image_url() requires width > 0 (got %d for src "%s").', $width, $src));
+        }
+
+        if ($width > $this->maxWidth) {
+            throw new \InvalidArgumentException(\sprintf('image_url() width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $width, $src, $this->maxWidth));
+        }
+
         $resolvedQuality = $quality ?? $this->defaultQuality;
 
         $resolvedWatermark = match (true) {

@@ -145,8 +145,10 @@ configured file permissions (needed because `tempnam()` creates files with `0600
 - **ext-imagick directly** — thin wrapper, no third-party libraries
 - `ImagickProcessor` calls `$imagick->clear()` in `finally` block after every operation — critical for FrankenPHP worker
   mode. `Imagick::destroy()` is not used (deprecated).
-- Processing writes to a temp file, then `CacheStorageInterface::write()` moves it to the cache location
-- Temp directory is configurable (`tmp_dir` in bundle config)
+- Processing writes via `CacheStorageInterface::writeLocked(cachePath, callable)` — the storage creates an intermediate
+  tmp file in the TARGET directory (guaranteeing atomic intra-filesystem rename), invokes the callback with that path,
+  then atomic-renames to the final cache location. Per-variant `flock` on a sibling `.lock` file prevents thundering
+  herd when N concurrent requests race for the same uncached variant.
 - Autorotation from EXIF orientation data
 - Directory creation uses race-condition-safe pattern: `!is_dir() && !mkdir() && !is_dir()`
 - File and directory permissions are configurable (`file_permissions`, `directory_permissions`). Applied via `chmod()`
@@ -364,9 +366,10 @@ id_sign_image:
             size: 20
             margin: 10
     auto_dimensions: false
+    max_width: 4096                     # guard against memory exhaustion
+    max_source_bytes: 20971520          # 20 MiB, 0 disables
     file_permissions: 0660              # null = use umask default
     directory_permissions: 0770
-    tmp_dir: ~                          # defaults to sys_get_temp_dir()
     serve_mode: 'public'                # 'public' or 'controller'
     route_prefix: '/_image'
 ```

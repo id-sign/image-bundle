@@ -8,6 +8,7 @@ use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Controller\ImageController;
 use IdSign\ImageBundle\Service\ImagickProcessor;
+use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\UrlSigner;
 use IdSign\ImageBundle\Service\WatermarkRegistry;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
@@ -29,14 +30,16 @@ class ImageControllerTest extends TestCase
         $signer = new UrlSigner('test-secret');
         $this->cachePathResolver = new CachePathResolver($signer);
 
+        $sizeValidator = new SourceSizeValidator(0);
+
         $this->controller = new ImageController(
-            new ImagickProcessor(0o660, 0o770),
+            new ImagickProcessor($sizeValidator, 0o660, 0o770),
             new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $this->cachePathResolver,
             $signer,
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             new WatermarkRegistry([]),
-            sys_get_temp_dir(),
+            $sizeValidator,
         );
     }
 
@@ -142,14 +145,16 @@ class ImageControllerTest extends TestCase
         $signer = new UrlSigner('test-secret');
         $resolver = new CachePathResolver($signer);
 
+        $sizeValidator = new SourceSizeValidator(0);
+
         $controller = new ImageController(
-            new ImagickProcessor(0o660, 0o770),
+            new ImagickProcessor($sizeValidator, 0o660, 0o770),
             new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $resolver,
             $signer,
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             $registry,
-            sys_get_temp_dir(),
+            $sizeValidator,
         );
 
         $path = $resolver->resolve('test.jpg', 64, 48, 'cover', 80, 'jpeg', 'test');

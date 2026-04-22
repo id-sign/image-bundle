@@ -14,6 +14,7 @@ class ImageMetadataReader implements ResetInterface
 
     public function __construct(
         private readonly ImageSourceInterface $imageSource,
+        private readonly SourceSizeValidator $sourceSizeValidator,
         private readonly string $cacheDirectory,
         private readonly ?int $filePermissions,
         private readonly int $directoryPermissions,
@@ -77,9 +78,15 @@ class ImageMetadataReader implements ResetInterface
     private function readDimensions(string $src): array
     {
         $sourcePath = $this->imageSource->getAbsolutePath($src);
-        $imagick = new \Imagick($sourcePath);
+        $this->sourceSizeValidator->assertFits($sourcePath);
+
+        $imagick = new \Imagick();
 
         try {
+            // pingImage reads only the header — orders of magnitude faster than new Imagick($path),
+            // which decodes the full pixel buffer just to learn the dimensions.
+            $imagick->pingImage($sourcePath);
+
             return [
                 'width' => $imagick->getImageWidth(),
                 'height' => $imagick->getImageHeight(),

@@ -68,4 +68,17 @@ class SrcsetGeneratorTest extends TestCase
         self::assertCount(1, $entry640);
         self::assertStringContainsString('640_480_cover_80', $entry640[0]['url']);
     }
+
+    public function testGenerateSkipsBreakpointEqualToWidth(): void
+    {
+        // Width matches a breakpoint — caller appends main width separately, skip here.
+        $entries = $this->generator->generate('photo.jpg', 1080, null, null, 80, 'webp');
+
+        $widths = array_column($entries, 'width');
+
+        self::assertContains(640, $widths);
+        self::assertContains(750, $widths);
+        self::assertContains(828, $widths);
+        self::assertNotContains(1080, $widths);
+    }
 }

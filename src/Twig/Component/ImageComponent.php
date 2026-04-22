@@ -50,6 +50,7 @@ class ImageComponent
         private readonly bool $blurEnabled,
         private readonly bool $globalAutoDimensions,
         private readonly ?string $defaultWatermark,
+        private readonly int $maxWidth,
     ) {
     }
 
@@ -58,6 +59,10 @@ class ImageComponent
     {
         if ($this->width <= 0) {
             throw new \InvalidArgumentException(\sprintf('The "width" prop is required and must be > 0 on <twig:Image src="%s" />. It is the intrinsic width of the generated image file in pixels — pick the largest size the image will ever render at. See docs for guidance.', $this->src));
+        }
+
+        if ($this->width > $this->maxWidth) {
+            throw new \InvalidArgumentException(\sprintf('The "width" prop (%d) on <twig:Image src="%s" /> exceeds the configured id_sign_image.max_width (%d). Either lower the width or raise max_width in the bundle config.', $this->width, $this->src, $this->maxWidth));
         }
 
         $this->resolvedQuality = $this->quality ?? $this->defaultQuality;

@@ -35,6 +35,7 @@ class ImageComponentTest extends TestCase
             false,
             $globalAutoDimensions,
             null,
+            4096,
         );
     }
 
@@ -55,9 +56,22 @@ class ImageComponentTest extends TestCase
         $component = $this->createComponent();
         $component->src = 'uploads/photo.jpg';
         $component->width = -1;
-        $this->metadataReader->expects(self::never())->method('calculateHeight');
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
 
         $this->expectException(\InvalidArgumentException::class);
+
+        $component->postMount();
+    }
+
+    public function testPostMountThrowsWhenWidthExceedsMaxWidth(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 10_000; // default createComponent uses maxWidth=4096
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_width');
 
         $component->postMount();
     }
@@ -166,6 +180,7 @@ class ImageComponentTest extends TestCase
             false,
             false,
             null,
+            4096,
         );
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
@@ -196,6 +211,7 @@ class ImageComponentTest extends TestCase
             false,
             false,
             null,
+            4096,
         );
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
@@ -227,6 +243,7 @@ class ImageComponentTest extends TestCase
             false,
             false,
             null,
+            4096,
         );
         $component->src = 'icons/logo.svg';
         $component->width = 120;

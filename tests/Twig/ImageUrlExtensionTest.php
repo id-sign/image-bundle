@@ -37,6 +37,7 @@ class ImageUrlExtensionTest extends TestCase
             80,
             null,
             false,
+            4096,
         );
     }
 
@@ -93,6 +94,7 @@ class ImageUrlExtensionTest extends TestCase
             80,
             'copyright',
             false,
+            4096,
         );
 
         $url = $extension->imageUrl('photo.jpg', 800, format: 'webp', watermark: false);
@@ -109,6 +111,7 @@ class ImageUrlExtensionTest extends TestCase
             80,
             'copyright',
             false,
+            4096,
         );
 
         $url = $extension->imageUrl('photo.jpg', 800, format: 'webp');
@@ -178,6 +181,7 @@ class ImageUrlExtensionTest extends TestCase
             80,
             null,
             false,
+            4096,
         );
 
         $url = $extension->imageUrl('photo.jpg', 800, height: 400, fit: 'contain', autoDimensions: true, format: 'webp');
@@ -197,6 +201,7 @@ class ImageUrlExtensionTest extends TestCase
             80,
             null,
             true,
+            4096,
         );
 
         $url = $extension->imageUrl('icons/logo.svg', 120, format: 'webp');
@@ -213,6 +218,7 @@ class ImageUrlExtensionTest extends TestCase
             80,
             null,
             true,
+            4096,
         );
 
         $this->metadataReader->method('calculateHeight')
@@ -229,6 +235,21 @@ class ImageUrlExtensionTest extends TestCase
 
         self::assertCount(1, $functions);
         self::assertSame('image_url', $functions[0]->getName());
+    }
+
+    public function testImageUrlThrowsWhenWidthIsZero(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->extension->imageUrl('photo.jpg', 0);
+    }
+
+    public function testImageUrlThrowsWhenWidthExceedsMaxWidth(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('max_width');
+
+        $this->extension->imageUrl('photo.jpg', 10_000);
     }
 
     private function createUrlGenerator(): ImageUrlGenerator

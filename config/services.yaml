@@ -25,6 +25,10 @@ services:
         alias: IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage
 
     # Services
+    IdSign\ImageBundle\Service\SourceSizeValidator:
+        arguments:
+            $maxBytes: '%id_sign_image.max_source_bytes%'
+
     IdSign\ImageBundle\Service\ImagickProcessor:
         arguments:
             $filePermissions: '%id_sign_image.file_permissions%'
@@ -77,6 +81,7 @@ services:
             $blurEnabled: '%id_sign_image.blur.enabled%'
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
             $defaultWatermark: '%id_sign_image.default_watermark%'
+            $maxWidth: '%id_sign_image.max_width%'
 
     # Twig Extension
     IdSign\ImageBundle\Twig\ImageUrlExtension:
@@ -84,6 +89,7 @@ services:
             $defaultQuality: '%id_sign_image.default_quality%'
             $defaultWatermark: '%id_sign_image.default_watermark%'
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
+            $maxWidth: '%id_sign_image.max_width%'
 
     # Command
     IdSign\ImageBundle\Command\PurgeCacheCommand:
@@ -92,6 +98,4 @@ services:
 
     # Controller
     IdSign\ImageBundle\Controller\ImageController:
-        arguments:
-            $tmpDir: '%id_sign_image.tmp_dir%'
         tags: ['controller.service_arguments']
