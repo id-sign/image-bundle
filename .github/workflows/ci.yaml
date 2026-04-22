@@ -50,6 +50,13 @@ jobs:
             symfony: '8.0.*'
     steps:
       - uses: actions/checkout@v6
+
+      # ubuntu-24.04 ships libheif with AVIF decode only — AV1 encoder lives in a
+      # separate plugin package. See actions/runner-images#13728 for the upstream
+      # decision not to include it in the base image.
+      - name: Install AVIF encoder plugin
+        run: sudo apt-get install -y libheif-plugin-aomenc
+
       - uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
