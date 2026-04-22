@@ -85,6 +85,9 @@ id_sign_image:
     # Auto-calculate height from source aspect ratio when only width is provided
     auto_dimensions: false
 
+    # Use lossless encoding by default (WebP/AVIF only — ignored for JPEG/PNG)
+    lossless: false
+
     # Safety limits — protect against memory exhaustion and decompression bombs
     max_width: 4096                 # Reject component width above this (pixels)
     max_source_bytes: 20971520      # Reject source files above this (bytes). 0 disables.
@@ -186,6 +189,7 @@ Output:
 | `quality`        | int           | no       | Output quality (overrides `default_quality`)                                 |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global `auto_dimensions`) |
 | `watermark`      | string\|false | no       | Watermark profile name, `false` to disable, omit for global default          |
+| `lossless`       | bool          | no       | Use lossless encoding (WebP/AVIF only, overrides global config)              |
 
 All other attributes (`alt`, `class`, `id`, `loading`, `data-*`, `aria-*`, etc.) are passed through to the `<img>` tag.
 
@@ -286,6 +290,46 @@ its own image, position, opacity, size, and margin.
 
 Each watermark profile produces a separate cached file with a distinct URL, so the same image can exist with different
 watermarks or without one.
+
+### `lossless`
+
+Switches the encoder into its lossless mode for formats that support it. Useful for screenshots, diagrams, UI assets,
+pixel art, and anything where `quality=100` still visibly softens edges or introduces banding.
+
+```twig
+{# Single lossless asset #}
+<twig:Image src="docs/screenshot.png" :width="1200" lossless />
+
+{# With watermark #}
+<twig:Image src="icons/diagram.png" :width="600" lossless watermark="copyright" />
+
+{# Disable even if set globally #}
+<twig:Image src="photos/hero.jpg" :width="1920" :lossless="false" />
+```
+
+**Format matrix:**
+
+| Output format | `lossless=true` behaviour |
+|---|---|
+| `webp` | True lossless WebP (separate codec path, not `quality=100`) |
+| `avif` | True lossless AVIF via libheif. **Requires AV1 encoder plugin** (see below) |
+| `jpeg` / `jpg` | Silently ignored — JPEG has no lossless mode. `quality` applies normally |
+| `png` | Silently no-op — PNG is always lossless |
+
+Lossless encoding is **5-50× slower** and produces **2-10× larger files** than lossy at `quality=80`. For photographic
+content the visual difference is imperceptible; use lossless only where bit-exact pixels actually matter.
+
+**AVIF runtime requirement:** libheif on Debian/Ubuntu 24.04+ ships without an AV1 encoder by default. Install
+`libheif-plugin-aomenc` on the host where PHP runs. Without it, AVIF lossless (and even lossy) encoding fails with
+`no encode delegate for image format AVIF`.
+
+```bash
+# Debian / Ubuntu 24.04+
+apt-get install libheif-plugin-aomenc
+```
+
+`lossless` can be set globally via the `lossless` config key and overridden per-component via the prop. The global
+default is `false`.
 
 ## Serve modes
 
@@ -608,6 +652,7 @@ For contexts where you need a single image URL instead of a full `<picture>` tag
 | `format`         | string        | no       | Output format (`avif`, `webp`, `jpeg`, `png`). If omitted, negotiated from request |
 | `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default         |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config) |
+| `lossless`       | bool          | no       | Lossless encoding for WebP/AVIF output (overrides global config)  |
 
 ## Development
 

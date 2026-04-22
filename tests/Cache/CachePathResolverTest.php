@@ -42,6 +42,46 @@ class CachePathResolverTest extends TestCase
         self::assertStringContainsString($signature.'_', $path);
     }
 
+    public function testResolveWithLosslessAddsSegment(): void
+    {
+        $lossy = $this->resolver->resolve('photo.jpg', 800, null, null, 100, 'webp');
+        $lossless = $this->resolver->resolve('photo.jpg', 800, null, null, 100, 'webp', null, true);
+
+        self::assertStringNotContainsString('_lossless', $lossy);
+        self::assertStringContainsString('_lossless', $lossless);
+        self::assertNotSame($lossy, $lossless);
+    }
+
+    public function testParseLosslessPath(): void
+    {
+        $path = $this->resolver->resolve('icons/logo.png', 800, null, null, 100, 'webp', null, true);
+        $parsed = $this->resolver->parse($path);
+
+        self::assertNotNull($parsed);
+        self::assertTrue($parsed['lossless']);
+        self::assertSame('webp', $parsed['format']);
+    }
+
+    public function testParseLossyPathHasFalseLossless(): void
+    {
+        $path = $this->resolver->resolve('photo.jpg', 800, null, null, 80, 'webp');
+        $parsed = $this->resolver->parse($path);
+
+        self::assertNotNull($parsed);
+        self::assertFalse($parsed['lossless']);
+    }
+
+    public function testLosslessPathWithWatermarkRoundtrip(): void
+    {
+        $path = $this->resolver->resolve('photo.jpg', 800, 600, 'cover', 100, 'avif', 'copyright', true);
+        $parsed = $this->resolver->parse($path);
+
+        self::assertNotNull($parsed);
+        self::assertTrue($parsed['lossless']);
+        self::assertSame('copyright', $parsed['watermark']);
+        self::assertStringContainsString('_lossless_wm-copyright.avif', $path);
+    }
+
     public function testResolveContainsParameters(): void
     {
         $path = $this->resolver->resolve('uploads/photo.jpg', 800, 600, 'cover', 80, 'avif');

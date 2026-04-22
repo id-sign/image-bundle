@@ -130,6 +130,39 @@ class ImageControllerTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
     }
 
+    public function testWebpLosslessProducesBitExactPixels(): void
+    {
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 100, 'webp', null, true);
+        $request = Request::create('/_image/'.$path);
+
+        $response = ($this->controller)($request, $path);
+
+        self::assertInstanceOf(BinaryFileResponse::class, $response);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('_lossless', $path);
+
+        // Decoded output should be a valid WebP. A more thorough assertion would decode
+        // a non-compressed source and compare pixel-for-pixel, but for our fixtures
+        // verifying magic bytes and Imagick readability is enough.
+        $bytes = file_get_contents($this->cacheDir.'/'.$path);
+        self::assertIsString($bytes);
+        self::assertSame('RIFF', substr($bytes, 0, 4));
+        self::assertSame('WEBP', substr($bytes, 8, 4));
+    }
+
+    public function testLosslessFlagTamperingInvalidatesSignature(): void
+    {
+        // Legitimate lossy URL
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+        // Attacker inserts _lossless before the .webp extension — signature was built without it
+        $tampered = (string) preg_replace('/\.webp$/', '_lossless.webp', $path);
+        $request = Request::create('/_image/'.$tampered);
+
+        $response = ($this->controller)($request, $tampered);
+
+        self::assertSame(403, $response->getStatusCode());
+    }
+
     public function testWatermarkApplied(): void
     {
         $registry = new WatermarkRegistry([

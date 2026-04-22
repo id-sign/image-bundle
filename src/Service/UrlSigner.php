@@ -13,20 +13,20 @@ class UrlSigner
         $this->derivedKey = hash_hmac('sha256', 'id_sign_image', $secret, true);
     }
 
-    public function sign(string $src, int $width, ?int $height, ?string $fit, int $quality, ?string $watermark = null): string
+    public function sign(string $src, int $width, ?int $height, ?string $fit, int $quality, ?string $watermark = null, bool $lossless = false): string
     {
-        return substr(hash_hmac('sha256', $this->buildPayload($src, $width, $height, $fit, $quality, $watermark), $this->derivedKey), 0, 16);
+        return substr(hash_hmac('sha256', $this->buildPayload($src, $width, $height, $fit, $quality, $watermark, $lossless), $this->derivedKey), 0, 16);
     }
 
-    public function verify(string $signature, string $src, int $width, ?int $height, ?string $fit, int $quality, ?string $watermark = null): bool
+    public function verify(string $signature, string $src, int $width, ?int $height, ?string $fit, int $quality, ?string $watermark = null, bool $lossless = false): bool
     {
-        $expected = $this->sign($src, $width, $height, $fit, $quality, $watermark);
+        $expected = $this->sign($src, $width, $height, $fit, $quality, $watermark, $lossless);
 
         return hash_equals($expected, $signature);
     }
 
-    private function buildPayload(string $src, int $width, ?int $height, ?string $fit, int $quality, ?string $watermark): string
+    private function buildPayload(string $src, int $width, ?int $height, ?string $fit, int $quality, ?string $watermark, bool $lossless): string
     {
-        return \sprintf('%s|%d|%s|%s|%d|%s', $src, $width, $height ?? '', $fit ?? '', $quality, $watermark ?? '');
+        return \sprintf('%s|%d|%s|%s|%d|%s|%s', $src, $width, $height ?? '', $fit ?? '', $quality, $watermark ?? '', $lossless ? '1' : '');
     }
 }

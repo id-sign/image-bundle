@@ -38,6 +38,7 @@ class ImageUrlExtensionTest extends TestCase
             null,
             false,
             4096,
+            false,
         );
     }
 
@@ -95,6 +96,7 @@ class ImageUrlExtensionTest extends TestCase
             'copyright',
             false,
             4096,
+            false,
         );
 
         $url = $extension->imageUrl('photo.jpg', 800, format: 'webp', watermark: false);
@@ -112,6 +114,7 @@ class ImageUrlExtensionTest extends TestCase
             'copyright',
             false,
             4096,
+            false,
         );
 
         $url = $extension->imageUrl('photo.jpg', 800, format: 'webp');
@@ -182,6 +185,7 @@ class ImageUrlExtensionTest extends TestCase
             null,
             false,
             4096,
+            false,
         );
 
         $url = $extension->imageUrl('photo.jpg', 800, height: 400, fit: 'contain', autoDimensions: true, format: 'webp');
@@ -202,6 +206,7 @@ class ImageUrlExtensionTest extends TestCase
             null,
             true,
             4096,
+            false,
         );
 
         $url = $extension->imageUrl('icons/logo.svg', 120, format: 'webp');
@@ -219,6 +224,7 @@ class ImageUrlExtensionTest extends TestCase
             null,
             true,
             4096,
+            false,
         );
 
         $this->metadataReader->method('calculateHeight')
@@ -250,6 +256,56 @@ class ImageUrlExtensionTest extends TestCase
         $this->expectExceptionMessage('max_width');
 
         $this->extension->imageUrl('photo.jpg', 10_000);
+    }
+
+    public function testLosslessParameterAddsLosslessSegment(): void
+    {
+        $url = $this->extension->imageUrl('icon.png', 800, format: 'webp', lossless: true);
+
+        self::assertStringContainsString('_lossless', $url);
+    }
+
+    public function testLosslessFalseDoesNotAddSegment(): void
+    {
+        $url = $this->extension->imageUrl('photo.jpg', 800, format: 'webp', lossless: false);
+
+        self::assertStringNotContainsString('_lossless', $url);
+    }
+
+    public function testGlobalLosslessAppliesWhenParamIsNull(): void
+    {
+        $extension = new ImageUrlExtension(
+            $this->createUrlGenerator(),
+            $this->metadataReader,
+            $this->requestStack,
+            80,
+            null,
+            false,
+            4096,
+            true, // global lossless on
+        );
+
+        $url = $extension->imageUrl('icon.png', 800, format: 'webp');
+
+        self::assertStringContainsString('_lossless', $url);
+    }
+
+    public function testLosslessParameterOverridesGlobal(): void
+    {
+        $extension = new ImageUrlExtension(
+            $this->createUrlGenerator(),
+            $this->metadataReader,
+            $this->requestStack,
+            80,
+            null,
+            false,
+            4096,
+            true, // global lossless on
+        );
+
+        $url = $extension->imageUrl('icon.png', 800, format: 'webp', lossless: false);
+
+        self::assertStringNotContainsString('_lossless', $url);
     }
 
     private function createUrlGenerator(): ImageUrlGenerator

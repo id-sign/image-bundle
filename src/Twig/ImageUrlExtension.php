@@ -20,6 +20,7 @@ class ImageUrlExtension extends AbstractExtension
         private readonly ?string $defaultWatermark,
         private readonly bool $globalAutoDimensions,
         private readonly int $maxWidth,
+        private readonly bool $globalLossless,
     ) {
     }
 
@@ -39,6 +40,7 @@ class ImageUrlExtension extends AbstractExtension
         ?string $format = null,
         string|false|null $watermark = null,
         ?bool $autoDimensions = null,
+        ?bool $lossless = null,
     ): string {
         if ($width <= 0) {
             throw new \InvalidArgumentException(\sprintf('image_url() requires width > 0 (got %d for src "%s").', $width, $src));
@@ -56,6 +58,8 @@ class ImageUrlExtension extends AbstractExtension
             default => $this->defaultWatermark,
         };
 
+        $resolvedLossless = $lossless ?? $this->globalLossless;
+
         $resolvedHeight = $height;
 
         if (null === $height && ($autoDimensions ?? $this->globalAutoDimensions) && 'svg' !== strtolower(pathinfo($src, \PATHINFO_EXTENSION))) {
@@ -65,15 +69,15 @@ class ImageUrlExtension extends AbstractExtension
         $processingHeight = null !== $fit ? $resolvedHeight : null;
 
         if (null !== $format) {
-            return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, $format, $resolvedWatermark);
+            return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, $format, $resolvedWatermark, $resolvedLossless);
         }
 
         $request = $this->requestStack->getCurrentRequest();
 
         if (null !== $request) {
-            return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $resolvedQuality, $resolvedWatermark);
+            return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $resolvedQuality, $resolvedWatermark, $resolvedLossless);
         }
 
-        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, 'webp', $resolvedWatermark);
+        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, 'webp', $resolvedWatermark, $resolvedLossless);
     }
 }

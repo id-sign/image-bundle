@@ -38,6 +38,7 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 | `quality`        | int           | no       | Output quality 1-100 (default from config)                                                     |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config)                              |
 | `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default                                      |
+| `lossless`       | bool          | no       | Use lossless encoding for WebP/AVIF output (overrides global config)                           |
 
 All other attributes pass through to `<img>`: `alt`, `class`, `id`, `loading`, `sizes`, `data-*`, `aria-*`, etc.
 
@@ -147,9 +148,11 @@ id_sign_image:
             size: 20                    # % of output image width
             margin: 10                  # pixels from edge
     auto_dimensions: false
+    lossless: false                 # true lossless encoding (webp/avif only, ignored for jpeg/png)
+    max_width: 4096                 # reject component width above this
+    max_source_bytes: 20971520      # 20 MiB; 0 disables the check
     file_permissions: 0660          # permissions for cache files (null = umask default)
     directory_permissions: 0770     # permissions for cache directories
-    tmp_dir: ~
     serve_mode: 'public'
     route_prefix: '/_image'
 ```
@@ -189,6 +192,44 @@ location /_image/ { try_files $uri @symfony; }
 
 Raster URLs are HMAC-signed. Tampered parameters → 403. SVG URLs have no signature (no parameters to vary).
 
+URL format: `/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}`
+
+## Security model
+
+Source directory (default `%kernel.project_dir%/data`) is treated as **publicly accessible**. Any file under it is
+readable by anyone who knows (or guesses) the path. For access control, use `serve_mode: controller` + Symfony firewall
+in front of the bundle route; `try_files` in public mode bypasses Symfony security.
+
+Path segments `..` and empty are rejected; symlinks inside the source tree ARE followed (admin's decision). Audit
+`find data/ -type l` if you don't want that.
+
+### SVG XSS in public mode
+
+In public mode the web server serves cached SVGs directly — the bundle can't set CSP headers. Add this to nginx/Apache
+if source directory can receive user-uploaded SVG:
+
+```nginx
+location ~* ^/_image/.+\.svg$ {
+    add_header Content-Security-Policy "sandbox" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    try_files $uri =404;
+}
+```
+
+## Lossless encoding
+
+`lossless=true` switches WebP/AVIF to their true lossless codecs (not `quality=100`, which is still lossy). Silently
+ignored for JPEG (no lossless) and PNG (already lossless).
+
+```twig
+<twig:Image src="docs/screenshot.png" :width="1200" lossless />
+```
+
+5-50× slower, 2-10× larger files. Use for screenshots/diagrams/pixel art where edges matter.
+
+**AVIF runtime requirement:** libheif built with AV1 encoder. On Debian/Ubuntu 24.04+ install `libheif-plugin-aomenc`
+(not in base image). Missing encoder → `ImagickException: no encode delegate for AVIF`.
+
 ## Cache management
 
 ```bash
@@ -211,7 +252,7 @@ For single URL generation in Twig (og tags, emails, JSON-LD):
 {{ image_url('uploads/photo.jpg', 800, format='webp') }}
 
 {# All options #}
-{{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright', autoDimensions=true) }}
+{{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright', autoDimensions=true, lossless=true) }}
 ```
 
 Parameters mirror component props + `format` (string, optional — if omitted, negotiated from request Accept header).

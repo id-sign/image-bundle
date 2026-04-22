@@ -33,10 +33,16 @@ class ImageComponent
      */
     public string|false|null $watermark = null;
 
+    /**
+     * Lossless encoding for the output (webp/avif only). Null = use global config.
+     */
+    public ?bool $lossless = null;
+
     private int $resolvedQuality;
     private ?int $resolvedHeight = null;
     private ?int $processingHeight = null;
     private ?string $resolvedWatermark = null;
+    private bool $resolvedLossless = false;
 
     public function __construct(
         private readonly SrcsetGenerator $srcsetGenerator,
@@ -51,6 +57,7 @@ class ImageComponent
         private readonly bool $globalAutoDimensions,
         private readonly ?string $defaultWatermark,
         private readonly int $maxWidth,
+        private readonly bool $globalLossless,
     ) {
     }
 
@@ -72,6 +79,8 @@ class ImageComponent
             \is_string($this->watermark) => $this->watermark,
             default => $this->defaultWatermark,
         };
+
+        $this->resolvedLossless = $this->lossless ?? $this->globalLossless;
 
         $useAutoDimensions = $this->autoDimensions ?? $this->globalAutoDimensions;
 
@@ -117,6 +126,7 @@ class ImageComponent
                 $this->resolvedQuality,
                 $format,
                 $this->resolvedWatermark,
+                $this->resolvedLossless,
             );
 
             $mainPath = $this->cachePathResolver->resolve(
@@ -127,6 +137,7 @@ class ImageComponent
                 $this->resolvedQuality,
                 $format,
                 $this->resolvedWatermark,
+                $this->resolvedLossless,
             );
             $mainUrl = $this->routePrefix.'/'.$mainPath;
 
@@ -155,6 +166,7 @@ class ImageComponent
             $this->resolvedQuality,
             $this->getFallbackFormat(),
             $this->resolvedWatermark,
+            $this->resolvedLossless,
         );
 
         return $this->routePrefix.'/'.$cachePath;

@@ -54,4 +54,31 @@ class UrlSignerTest extends TestCase
 
         self::assertNotSame($sig1, $sig2);
     }
+
+    public function testLosslessFlagAltersSignature(): void
+    {
+        $lossy = $this->signer->sign('photo.jpg', 800, null, null, 80, null, false);
+        $lossless = $this->signer->sign('photo.jpg', 800, null, null, 80, null, true);
+
+        self::assertNotSame($lossy, $lossless);
+    }
+
+    public function testVerifyRespectsLosslessFlag(): void
+    {
+        $sig = $this->signer->sign('photo.jpg', 800, null, null, 80, null, true);
+
+        self::assertTrue($this->signer->verify($sig, 'photo.jpg', 800, null, null, 80, null, true));
+        self::assertFalse($this->signer->verify($sig, 'photo.jpg', 800, null, null, 80, null, false));
+    }
+
+    public function testLosslessAndWatermarkBothAlterSignature(): void
+    {
+        $a = $this->signer->sign('photo.jpg', 800, null, null, 80, null, true);
+        $b = $this->signer->sign('photo.jpg', 800, null, null, 80, 'copyright', true);
+        $c = $this->signer->sign('photo.jpg', 800, null, null, 80, 'copyright', false);
+
+        self::assertNotSame($a, $b);
+        self::assertNotSame($b, $c);
+        self::assertNotSame($a, $c);
+    }
 }

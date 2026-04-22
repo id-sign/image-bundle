@@ -35,6 +35,7 @@ class SrcsetGenerator
         int $quality,
         string $format,
         ?string $watermark = null,
+        bool $lossless = false,
     ): array {
         $aspectRatio = (null !== $height && $width > 0) ? $height / $width : null;
         $entries = [];
@@ -45,7 +46,7 @@ class SrcsetGenerator
             }
 
             $breakpointHeight = null !== $aspectRatio ? (int) round($breakpoint * $aspectRatio) : null;
-            $cachePath = $this->cachePathResolver->resolve($src, $breakpoint, $breakpointHeight, $fit, $quality, $format, $watermark);
+            $cachePath = $this->cachePathResolver->resolve($src, $breakpoint, $breakpointHeight, $fit, $quality, $format, $watermark, $lossless);
 
             $entries[] = [
                 'url' => $this->routePrefix.'/'.$cachePath,
@@ -67,8 +68,9 @@ class SrcsetGenerator
         int $quality,
         string $format,
         ?string $watermark = null,
+        bool $lossless = false,
     ): string {
-        $entries = $this->generate($src, $width, $height, $fit, $quality, $format, $watermark);
+        $entries = $this->generate($src, $width, $height, $fit, $quality, $format, $watermark, $lossless);
 
         return implode(', ', array_map(
             static fn (array $entry): string => $entry['url'].' '.$entry['width'].'w',

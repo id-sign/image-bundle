@@ -15,7 +15,9 @@ interface ImageProcessorInterface
      * @param int|null    $height     Target height in pixels (null = proportional)
      * @param string|null $fit        Fit mode: 'cover', 'contain', 'scale-down', or null
      * @param string      $format     Output format: 'avif', 'webp', 'jpeg', 'png'
-     * @param int         $quality    Output quality (1-100)
+     * @param int         $quality    Output quality (1-100) — ignored when $lossless is true
+     * @param bool        $lossless   Use lossless encoder for formats that support it (webp, avif).
+     *                                Silently ignored for JPEG (no lossless mode) and PNG (already lossless).
      *
      * @throws \ImagickException
      */
@@ -28,5 +30,6 @@ interface ImageProcessorInterface
         string $format,
         int $quality,
         ?WatermarkOptions $watermark = null,
+        bool $lossless = false,
     ): void;
 }

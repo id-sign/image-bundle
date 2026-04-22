@@ -99,11 +99,13 @@ HMAC overhead per image lifecycle:
 URLs are path-based (not query string) so they work with web server `try_files`:
 
 ```
-/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_wm-{profile}].{format}
+/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}
 ```
 
 Example: `/_image/uploads/photo.jpg/a1b2c3d4e5f6g7h8_800_600_cover_80.avif`
 With watermark: `/_image/uploads/photo.jpg/b2c3d4e5f6g7h8a1_800_600_cover_80_wm-copyright.avif`
+Lossless: `/_image/icons/logo.png/c3d4e5f6g7h8a1b2_800_auto_none_100_lossless.webp`
+Lossless + watermark: `/_image/icons/logo.png/...._800_auto_none_100_lossless_wm-copyright.webp`
 SVG (no signature, no parameters): `/_image/icons/logo.svg`
 
 The URL path doubles as the filesystem cache path. `CachePathResolver` generates paths, and can also parse parameters
@@ -176,6 +178,16 @@ Same rule applies to `image_url()` Twig function — `height` without `fit` is i
 - `cover` — fill dimensions, crop from center (`cropThumbnailImage`)
 - `contain` — fit within dimensions, preserve aspect ratio (`thumbnailImage`)
 - `scale-down` — like contain, but never upscales
+
+#### Lossless encoding
+
+`lossless=true` flips the encoder into its lossless codec path via `setOption('webp:lossless', 'true')` for WebP and
+`setOption('heic:lossless', 'true')` for AVIF (AVIF is written through ImageMagick's HEIF coder; libheif honors the
+lossless flag). Silently no-op for JPEG (no lossless mode exists) and PNG (always lossless). The flag is part of the
+HMAC signature and cache path (`_lossless` segment before `_wm-*`), so lossy and lossless variants cache independently.
+
+AVIF lossless requires libheif built with AV1 encoder support. On Debian/Ubuntu 24.04+ that means
+`libheif-plugin-aomenc` — not installed by default.
 
 #### Watermark
 
@@ -366,6 +378,7 @@ id_sign_image:
             size: 20
             margin: 10
     auto_dimensions: false
+    lossless: false                     # true lossless encoding for webp/avif (ignored for jpeg/png)
     max_width: 4096                     # guard against memory exhaustion
     max_source_bytes: 20971520          # 20 MiB, 0 disables
     file_permissions: 0660              # null = use umask default

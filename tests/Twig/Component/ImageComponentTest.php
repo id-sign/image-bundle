@@ -18,6 +18,16 @@ class ImageComponentTest extends TestCase
 
     private function createComponent(bool $globalAutoDimensions = false): ImageComponent
     {
+        return $this->buildComponent($globalAutoDimensions, false);
+    }
+
+    private function createComponentWithLossless(bool $globalLossless): ImageComponent
+    {
+        return $this->buildComponent(false, $globalLossless);
+    }
+
+    private function buildComponent(bool $globalAutoDimensions, bool $globalLossless): ImageComponent
+    {
         $signer = new UrlSigner('test-secret');
         $resolver = new CachePathResolver($signer);
         $srcsetGenerator = new SrcsetGenerator($resolver, [640, 750, 828, 1080, 1200, 1920, 2048, 3840], '/_image');
@@ -36,6 +46,7 @@ class ImageComponentTest extends TestCase
             $globalAutoDimensions,
             null,
             4096,
+            $globalLossless,
         );
     }
 
@@ -43,7 +54,7 @@ class ImageComponentTest extends TestCase
     {
         $component = $this->createComponent();
         $component->src = 'uploads/photo.jpg';
-        $this->metadataReader->expects(self::never())->method('calculateHeight');
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('uploads/photo.jpg');
@@ -61,6 +72,56 @@ class ImageComponentTest extends TestCase
         $this->expectException(\InvalidArgumentException::class);
 
         $component->postMount();
+    }
+
+    public function testLosslessNullFallsBackToGlobalEnabled(): void
+    {
+        $component = $this->createComponentWithLossless(true);
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
+
+        $component->postMount();
+
+        self::assertStringContainsString('_lossless', $component->getFallbackSrc());
+    }
+
+    public function testLosslessNullFallsBackToGlobalDisabled(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
+
+        $component->postMount();
+
+        self::assertStringNotContainsString('_lossless', $component->getFallbackSrc());
+    }
+
+    public function testLosslessTrueOverridesGlobalDisabled(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $component->lossless = true;
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
+
+        $component->postMount();
+
+        self::assertStringContainsString('_lossless', $component->getFallbackSrc());
+    }
+
+    public function testLosslessFalseOverridesGlobalEnabled(): void
+    {
+        $component = $this->createComponentWithLossless(true);
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $component->lossless = false;
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
+
+        $component->postMount();
+
+        self::assertStringNotContainsString('_lossless', $component->getFallbackSrc());
     }
 
     public function testPostMountThrowsWhenWidthExceedsMaxWidth(): void
@@ -97,7 +158,7 @@ class ImageComponentTest extends TestCase
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
 
-        $this->metadataReader->expects(self::never())->method('calculateHeight');
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -127,7 +188,7 @@ class ImageComponentTest extends TestCase
         $component->width = 800;
         $component->autoDimensions = false;
 
-        $this->metadataReader->expects(self::never())->method('calculateHeight');
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -142,7 +203,7 @@ class ImageComponentTest extends TestCase
         $component->height = 400;
         $component->autoDimensions = true;
 
-        $this->metadataReader->expects(self::never())->method('calculateHeight');
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -156,7 +217,7 @@ class ImageComponentTest extends TestCase
         $component->width = 120;
         $component->autoDimensions = true;
 
-        $this->metadataReader->expects(self::never())->method('calculateHeight');
+        $this->metadataReader->expects($this->never())->method('calculateHeight');
 
         $component->postMount();
 
@@ -181,6 +242,7 @@ class ImageComponentTest extends TestCase
             false,
             null,
             4096,
+            false,
         );
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
@@ -212,6 +274,7 @@ class ImageComponentTest extends TestCase
             false,
             null,
             4096,
+            false,
         );
         $component->src = 'uploads/photo.jpg';
         $component->width = 800;
@@ -244,6 +307,7 @@ class ImageComponentTest extends TestCase
             false,
             null,
             4096,
+            false,
         );
         $component->src = 'icons/logo.svg';
         $component->width = 120;

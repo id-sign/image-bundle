@@ -82,6 +82,7 @@ services:
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
             $defaultWatermark: '%id_sign_image.default_watermark%'
             $maxWidth: '%id_sign_image.max_width%'
+            $globalLossless: '%id_sign_image.lossless%'
 
     # Twig Extension
     IdSign\ImageBundle\Twig\ImageUrlExtension:
@@ -90,6 +91,7 @@ services:
             $defaultWatermark: '%id_sign_image.default_watermark%'
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
             $maxWidth: '%id_sign_image.max_width%'
+            $globalLossless: '%id_sign_image.lossless%'
 
     # Command
     IdSign\ImageBundle\Command\PurgeCacheCommand:

@@ -66,7 +66,7 @@ class ImageController
             return new JsonResponse(['error' => 'Invalid image path.'], Response::HTTP_BAD_REQUEST);
         }
 
-        if (!$this->urlSigner->verify($params['signature'], $params['src'], $params['width'], $params['height'], $params['fit'], $params['quality'], $params['watermark'])) {
+        if (!$this->urlSigner->verify($params['signature'], $params['src'], $params['width'], $params['height'], $params['fit'], $params['quality'], $params['watermark'], $params['lossless'])) {
             return new JsonResponse(['error' => 'Invalid signature.'], Response::HTTP_FORBIDDEN);
         }
 
@@ -93,6 +93,7 @@ class ImageController
                     $params['format'],
                     $params['quality'],
                     $watermark,
+                    $params['lossless'],
                 );
             });
         }

@@ -33,6 +33,7 @@ class ImagickProcessor implements ImageProcessorInterface
         string $format,
         int $quality,
         ?WatermarkOptions $watermark = null,
+        bool $lossless = false,
     ): void {
         $this->sourceSizeValidator->assertFits($sourcePath);
 
@@ -73,6 +74,10 @@ class ImagickProcessor implements ImageProcessorInterface
 
             $imagick->setImageFormat($imagickFormat);
             $imagick->setImageCompressionQuality($quality);
+
+            if ($lossless) {
+                $this->applyLossless($imagick, $imagickFormat);
+            }
 
             $outputDir = \dirname($outputPath);
             if (!is_dir($outputDir) && !mkdir($outputDir, $this->directoryPermissions, true) && !is_dir($outputDir)) {
@@ -195,6 +200,21 @@ class ImagickProcessor implements ImageProcessorInterface
 
         $imagick->setImageBackgroundColor(new \ImagickPixel('white'));
         $imagick->setImageAlphaChannel(\Imagick::ALPHACHANNEL_REMOVE);
+    }
+
+    /**
+     * Enable the lossless encoder branch of the format's codec. Silently ignored for
+     * formats with no lossless mode (JPEG) or that are always lossless (PNG).
+     */
+    private function applyLossless(\Imagick $imagick, string $imagickFormat): void
+    {
+        match ($imagickFormat) {
+            'WEBP' => $imagick->setOption('webp:lossless', 'true'),
+            // AVIF files are written via ImageMagick's HEIF coder; libheif's lossless
+            // option is what actually flips the AV1 encoder into lossless mode.
+            'AVIF' => $imagick->setOption('heic:lossless', 'true'),
+            default => null,
+        };
     }
 
     /**

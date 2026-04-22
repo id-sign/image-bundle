@@ -27,8 +27,9 @@ class ImageUrlGenerator
         int $quality = 80,
         string $format = 'webp',
         ?string $watermark = null,
+        bool $lossless = false,
     ): string {
-        return $this->routePrefix.'/'.$this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark);
+        return $this->routePrefix.'/'.$this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark, $lossless);
     }
 
     /**
@@ -42,9 +43,10 @@ class ImageUrlGenerator
         ?string $fit = null,
         int $quality = 80,
         ?string $watermark = null,
+        bool $lossless = false,
     ): string {
         $format = $this->formatNegotiator->negotiateFromRequest($request, $src);
 
-        return $this->generate($src, $width, $height, $fit, $quality, $format, $watermark);
+        return $this->generate($src, $width, $height, $fit, $quality, $format, $watermark, $lossless);
     }
 }
