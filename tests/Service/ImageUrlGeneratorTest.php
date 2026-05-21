@@ -66,6 +66,14 @@ class ImageUrlGeneratorTest extends TestCase
         self::assertStringEndsWith('.jpeg', $url);
     }
 
+    public function testGenerateEncodesSrcWithSpaces(): void
+    {
+        $url = $this->generator->generate('blog/ChatGPT Image.png', 800, null, null, 80, 'avif');
+
+        self::assertStringNotContainsString(' ', $url);
+        self::assertStringContainsString('/_image/blog/ChatGPT%20Image.png/', $url);
+    }
+
     public function testGenerateDeterministic(): void
     {
         $url1 = $this->generator->generate('photo.jpg', 800, 600, 'cover', 80, 'avif');

@@ -26,6 +26,32 @@ class ImageComponentTest extends TestCase
         return $this->buildComponent(false, $globalLossless);
     }
 
+    /**
+     * Variant with stubbed metadata reader — for tests that exercise URL output and have
+     * no opinion about whether calculateHeight() gets called.
+     */
+    private function createComponentWithStubs(): ImageComponent
+    {
+        $signer = new UrlSigner('test-secret');
+        $resolver = new CachePathResolver($signer);
+        $srcsetGenerator = new SrcsetGenerator($resolver, [640, 750, 828, 1080, 1200, 1920, 2048, 3840], '/_image');
+
+        return new ImageComponent(
+            $srcsetGenerator,
+            $resolver,
+            $this->createStub(BlurPlaceholderGenerator::class),
+            $this->createStub(ImageMetadataReader::class),
+            80,
+            ['avif', 'webp'],
+            '/_image',
+            false,
+            false,
+            null,
+            4096,
+            false,
+        );
+    }
+
     private function buildComponent(bool $globalAutoDimensions, bool $globalLossless): ImageComponent
     {
         $signer = new UrlSigner('test-secret');
@@ -313,5 +339,49 @@ class ImageComponentTest extends TestCase
         $component->width = 120;
 
         self::assertSame('/_image/icons/logo.svg', $component->getSvgSrc());
+    }
+
+    public function testSourcesEncodeSpacesInSrcsetUrls(): void
+    {
+        $component = $this->createComponentWithStubs();
+        $component->src = 'blog/images/ChatGPT Image 18. 5. 2026 12_12_30.png';
+        $component->width = 1200;
+        $component->postMount();
+
+        $sources = $component->getSources();
+
+        self::assertNotSame([], $sources);
+
+        foreach ($sources as $source) {
+            // The srcset has the form "URL1 W1w, URL2 W2w" — extract URL parts and verify none contains a literal space.
+            foreach (explode(', ', $source['srcset']) as $entry) {
+                $url = explode(' ', $entry)[0];
+                self::assertStringNotContainsString(' ', $url, 'srcset URL must not contain literal spaces — it would be parsed as the URL/width-descriptor separator');
+                self::assertStringContainsString('ChatGPT%20Image%2018.%205.%202026%2012_12_30.png', $url);
+            }
+        }
+    }
+
+    public function testFallbackSrcEncodesSpaces(): void
+    {
+        $component = $this->createComponentWithStubs();
+        $component->src = 'blog/My Photo.jpg';
+        $component->width = 800;
+        $component->postMount();
+
+        $src = $component->getFallbackSrc();
+
+        self::assertStringNotContainsString(' ', $src);
+        self::assertStringContainsString('/_image/blog/My%20Photo.jpg/', $src);
+    }
+
+    public function testSvgSrcEncodesSpaces(): void
+    {
+        $component = $this->createComponentWithStubs();
+        $component->src = 'icons/my logo.svg';
+        $component->width = 120;
+        $component->postMount();
+
+        self::assertSame('/_image/icons/my%20logo.svg', $component->getSvgSrc());
     }
 }

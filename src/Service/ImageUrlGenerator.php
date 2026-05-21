@@ -29,7 +29,7 @@ class ImageUrlGenerator
         ?string $watermark = null,
         bool $lossless = false,
     ): string {
-        return $this->routePrefix.'/'.$this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark, $lossless);
+        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark, $lossless));
     }
 
     /**

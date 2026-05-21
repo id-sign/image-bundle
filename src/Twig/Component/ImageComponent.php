@@ -139,7 +139,7 @@ class ImageComponent
                 $this->resolvedWatermark,
                 $this->resolvedLossless,
             );
-            $mainUrl = $this->routePrefix.'/'.$mainPath;
+            $mainUrl = $this->routePrefix.'/'.CachePathResolver::encodeForUrl($mainPath);
 
             if ('' !== $srcset) {
                 $srcset .= ', ';
@@ -169,13 +169,13 @@ class ImageComponent
             $this->resolvedLossless,
         );
 
-        return $this->routePrefix.'/'.$cachePath;
+        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($cachePath);
     }
 
     #[ExposeInTemplate('svgSrc')]
     public function getSvgSrc(): string
     {
-        return $this->routePrefix.'/'.$this->src;
+        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->src);
     }
 
     #[ExposeInTemplate('showBlur')]

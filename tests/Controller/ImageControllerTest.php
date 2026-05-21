@@ -203,6 +203,29 @@ class ImageControllerTest extends TestCase
         self::assertNotSame($path, $pathNoWm);
     }
 
+    public function testEncodedUrlRoundtripsToSourceWithSpaces(): void
+    {
+        // Twig component / SrcsetGenerator emit %20-encoded URLs. Symfony's router
+        // decodes the {path} parameter before passing it to the controller, so the
+        // raw path (with literal spaces) reaches parse() and the source lookup —
+        // and must resolve back to the real file on disk.
+        $path = $this->cachePathResolver->resolve('photo with spaces.jpg', 64, null, null, 80, 'jpeg');
+        self::assertStringContainsString('photo with spaces.jpg', $path);
+
+        $encodedPath = CachePathResolver::encodeForUrl($path);
+        self::assertStringNotContainsString(' ', $encodedPath);
+        self::assertStringContainsString('photo%20with%20spaces.jpg', $encodedPath);
+
+        // Simulate what the kernel does: decode the URL path before dispatch.
+        $decodedPath = rawurldecode($encodedPath);
+        $request = Request::create('/_image/'.$encodedPath);
+
+        $response = ($this->controller)($request, $decodedPath);
+
+        self::assertInstanceOf(BinaryFileResponse::class, $response);
+        self::assertSame(200, $response->getStatusCode());
+    }
+
     public function testSvgPassthroughReturnsBinaryFileResponse(): void
     {
         $path = 'logo.svg';

@@ -49,7 +49,7 @@ class SrcsetGenerator
             $cachePath = $this->cachePathResolver->resolve($src, $breakpoint, $breakpointHeight, $fit, $quality, $format, $watermark, $lossless);
 
             $entries[] = [
-                'url' => $this->routePrefix.'/'.$cachePath,
+                'url' => $this->routePrefix.'/'.CachePathResolver::encodeForUrl($cachePath),
                 'width' => $breakpoint,
             ];
         }

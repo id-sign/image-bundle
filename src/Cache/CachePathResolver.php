@@ -49,6 +49,20 @@ class CachePathResolver
     }
 
     /**
+     * Encode a cache path for use in a URL.
+     *
+     * Encodes each segment with rawurlencode so unsafe characters in source filenames
+     * — most importantly spaces — don't break srcset parsing (a literal space is the
+     * separator between URL and width descriptor, so an unencoded space makes the
+     * browser discard the entire <source>) or HTML attribute boundaries. Slashes are
+     * preserved as path separators.
+     */
+    public static function encodeForUrl(string $path): string
+    {
+        return implode('/', array_map('rawurlencode', explode('/', $path)));
+    }
+
+    /**
      * Parse image parameters from a path (URL path after route prefix).
      *
      * @return array{src: string, signature: string, width: int, height: ?int, fit: ?string, quality: int, lossless: bool, watermark: ?string, format: string}|null

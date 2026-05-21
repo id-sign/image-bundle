@@ -208,6 +208,45 @@ class CachePathResolverTest extends TestCase
         ));
     }
 
+    public function testEncodeForUrlEncodesSpacesPerSegment(): void
+    {
+        $encoded = CachePathResolver::encodeForUrl('blog/images/ChatGPT Image 18. 5. 2026 12_12_30.png');
+
+        self::assertSame('blog/images/ChatGPT%20Image%2018.%205.%202026%2012_12_30.png', $encoded);
+    }
+
+    public function testEncodeForUrlPreservesSlashes(): void
+    {
+        $encoded = CachePathResolver::encodeForUrl('a/b/c.jpg');
+
+        self::assertSame('a/b/c.jpg', $encoded);
+    }
+
+    public function testEncodeForUrlEncodesSrcsetBreakingChars(): void
+    {
+        // Chars that would break srcset parsing or HTML attributes or routing.
+        $encoded = CachePathResolver::encodeForUrl('photos/a+b#c?d.jpg');
+
+        self::assertStringNotContainsString('+', $encoded);
+        self::assertStringNotContainsString('#', $encoded);
+        self::assertStringNotContainsString('?', $encoded);
+        self::assertSame('photos/a%2Bb%23c%3Fd.jpg', $encoded);
+    }
+
+    public function testEncodeForUrlOnResolvedPathIsRoundTripSafe(): void
+    {
+        // Encoded URL path round-trips: encode → urldecode (what Symfony router does) → parse() succeeds.
+        $path = $this->resolver->resolve('blog/My Photo.jpg', 800, null, null, 80, 'webp');
+        $encoded = CachePathResolver::encodeForUrl($path);
+        $decoded = rawurldecode($encoded);
+
+        self::assertSame($path, $decoded);
+
+        $parsed = $this->resolver->parse($decoded);
+        self::assertNotNull($parsed);
+        self::assertSame('blog/My Photo.jpg', $parsed['src']);
+    }
+
     public function testDeleteBySourcePrefix(): void
     {
         $path1 = $this->resolver->resolve('uploads/photo.jpg', 800, 600, 'cover', 80, 'avif');

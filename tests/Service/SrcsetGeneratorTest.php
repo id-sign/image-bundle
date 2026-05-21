@@ -69,6 +69,31 @@ class SrcsetGeneratorTest extends TestCase
         self::assertStringContainsString('640_480_cover_80', $entry640[0]['url']);
     }
 
+    public function testGenerateUrlEncodesSrcWithSpaces(): void
+    {
+        $entries = $this->generator->generate('blog/images/ChatGPT Image 18. 5. 2026.png', 1200, null, null, 80, 'avif');
+
+        self::assertNotSame([], $entries);
+
+        foreach ($entries as $entry) {
+            self::assertStringNotContainsString(' ', $entry['url'], 'srcset URL must not contain literal spaces — srcset uses space as URL/width-descriptor separator');
+            self::assertStringContainsString('ChatGPT%20Image%2018.%205.%202026.png', $entry['url']);
+            self::assertStringStartsWith('/_image/blog/images/', $entry['url']);
+        }
+    }
+
+    public function testGenerateSrcsetStringEncodesSpaces(): void
+    {
+        $srcset = $this->generator->generateSrcsetString('blog/My Photo.jpg', 800, null, null, 80, 'webp');
+
+        // The srcset has the form "URL1 W1w, URL2 W2w" — extract URL parts and verify none contains a literal space.
+        foreach (explode(', ', $srcset) as $entry) {
+            $url = explode(' ', $entry)[0];
+            self::assertStringNotContainsString(' ', $url, 'srcset URL must not contain literal spaces');
+            self::assertStringContainsString('My%20Photo.jpg', $url);
+        }
+    }
+
     public function testGenerateSkipsBreakpointEqualToWidth(): void
     {
         // Width matches a breakpoint — caller appends main width separately, skip here.
