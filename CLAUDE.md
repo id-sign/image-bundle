@@ -365,8 +365,9 @@ the sole author.
   (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder)
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), avif/webp format generation, watermark processing, SVG passthrough
-- Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (400x300 high-frequency, for
-  quality-sensitivity tests), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
+- Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
+  entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity
+  tests), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference
 

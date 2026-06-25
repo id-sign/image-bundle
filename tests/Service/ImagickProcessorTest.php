@@ -10,6 +10,10 @@ use PHPUnit\Framework\TestCase;
 
 class ImagickProcessorTest extends TestCase
 {
+    // 512x512 random noise. The fixture MUST stay high-entropy: noise is near-incompressible,
+    // so quality has a large effect (~2x size between q20 and q90) that holds across libwebp /
+    // libheif versions. A smooth or low-detail image can compress to the same size at q20 and
+    // q90 on some encoder builds, making the quality-sensitivity assertions flaky.
     private const FIXTURE = __DIR__.'/../Fixtures/detailed.jpg';
 
     private ImagickProcessor $processor;
