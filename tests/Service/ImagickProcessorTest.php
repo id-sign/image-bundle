@@ -61,17 +61,22 @@ class ImagickProcessorTest extends TestCase
 
     /**
      * Regression guard: the AVIF quality fix added a second quality setter; WebP must keep
-     * responding to quality exactly as before.
+     * responding to quality.
+     *
+     * Note the wide quality spread (10 vs 100). libwebp on ImageMagick 6.9.12 (Ubuntu 24.04, our
+     * CI) has a near-flat quality curve for lossy WebP — q1..q95 encode to an identical size and
+     * only q100 breaks away. A narrower pair (e.g. 20 vs 90) lands on the same plateau and is
+     * byte-identical there, so the assertion must straddle the q100 cliff to hold across builds.
      */
     public function testWebpRespectsQuality(): void
     {
-        $low = $this->renderSize('webp', 20);
-        $high = $this->renderSize('webp', 90);
+        $low = $this->renderSize('webp', 10);
+        $high = $this->renderSize('webp', 100);
 
         self::assertLessThan(
             $high,
             $low,
-            'WebP at quality=20 must produce a smaller file than quality=90.',
+            'WebP at quality=10 must produce a smaller file than quality=100.',
         );
     }
 
