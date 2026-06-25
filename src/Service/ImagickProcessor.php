@@ -73,6 +73,12 @@ class ImagickProcessor implements ImageProcessorInterface
             }
 
             $imagick->setImageFormat($imagickFormat);
+            // Two quality setters exist and feed different code paths. The HEIC/AVIF delegate
+            // reads quality from the ImageInfo struct (populated by setCompressionQuality(),
+            // equivalent to the CLI `-quality`), NOT from the per-image value — so AVIF silently
+            // ignores setImageCompressionQuality() and every variant comes out at the encoder
+            // default. WebP/JPEG honor the per-image setter. Set both so all delegates respond.
+            $imagick->setCompressionQuality($quality);
             $imagick->setImageCompressionQuality($quality);
 
             if ($lossless) {
@@ -210,9 +216,16 @@ class ImagickProcessor implements ImageProcessorInterface
     {
         match ($imagickFormat) {
             'WEBP' => $imagick->setOption('webp:lossless', 'true'),
-            // AVIF files are written via ImageMagick's HEIF coder; libheif's lossless
-            // option is what actually flips the AV1 encoder into lossless mode.
-            'AVIF' => $imagick->setOption('heic:lossless', 'true'),
+            // AVIF files are written via ImageMagick's HEIF coder. libheif's lossless option
+            // flips the AV1 encoder into true lossless mode where the build supports it
+            // (libheif-plugin-aomenc), but on builds without it the flag is a silent no-op and
+            // the output stays at the lossy default. Force quality to 100 as a guaranteed
+            // "visually lossless" floor so lossless=true never degrades to a small lossy file.
+            'AVIF' => (static function () use ($imagick): void {
+                $imagick->setOption('heic:lossless', 'true');
+                $imagick->setCompressionQuality(100);
+                $imagick->setImageCompressionQuality(100);
+            })(),
             default => null,
         };
     }

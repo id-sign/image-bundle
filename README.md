@@ -312,7 +312,7 @@ pixel art, and anything where `quality=100` still visibly softens edges or intro
 | Output format | `lossless=true` behaviour |
 |---|---|
 | `webp` | True lossless WebP (separate codec path, not `quality=100`) |
-| `avif` | True lossless AVIF via libheif. **Requires AV1 encoder plugin** (see below) |
+| `avif` | True lossless AVIF via libheif where the AV1 encoder plugin is present (see below); otherwise falls back to `quality=100` ("visually lossless") rather than silently dropping to the lossy default |
 | `jpeg` / `jpg` | Silently ignored — JPEG has no lossless mode. `quality` applies normally |
 | `png` | Silently no-op — PNG is always lossless |
 

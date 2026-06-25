@@ -182,12 +182,23 @@ Same rule applies to `image_url()` Twig function — `height` without `fit` is i
 #### Lossless encoding
 
 `lossless=true` flips the encoder into its lossless codec path via `setOption('webp:lossless', 'true')` for WebP and
-`setOption('heic:lossless', 'true')` for AVIF (AVIF is written through ImageMagick's HEIF coder; libheif honors the
-lossless flag). Silently no-op for JPEG (no lossless mode exists) and PNG (always lossless). The flag is part of the
-HMAC signature and cache path (`_lossless` segment before `_wm-*`), so lossy and lossless variants cache independently.
+`setOption('heic:lossless', 'true')` for AVIF (AVIF is written through ImageMagick's HEIF coder). For AVIF the lossless
+branch *also* forces quality to 100 (`setCompressionQuality(100)` + `setImageCompressionQuality(100)`): on builds without
+the AV1 lossless encoder the `heic:lossless` flag is a silent no-op, so the quality=100 floor guarantees a
+"visually lossless" result instead of falling through to the lossy default. Silently no-op for JPEG (no lossless mode
+exists) and PNG (always lossless). The flag is part of the HMAC signature and cache path (`_lossless` segment before
+`_wm-*`), so lossy and lossless variants cache independently.
 
-AVIF lossless requires libheif built with AV1 encoder support. On Debian/Ubuntu 24.04+ that means
+True (bit-exact) AVIF lossless requires libheif built with AV1 encoder support. On Debian/Ubuntu 24.04+ that means
 `libheif-plugin-aomenc` — not installed by default.
+
+#### Quality setters (AVIF/HEIC gotcha)
+
+`ImagickProcessor` sets quality via **both** `setCompressionQuality()` and `setImageCompressionQuality()`. They feed
+different code paths: the HEIC/AVIF delegate reads quality from the ImageInfo struct (populated by
+`setCompressionQuality()`, equivalent to the CLI `-quality`), while the per-image `setImageCompressionQuality()` is what
+WebP/JPEG honor. Using only the per-image setter — as the bundle did before v0.2.2 — makes AVIF ignore `quality` entirely
+and emit a byte-identical encoder-default file for every quality value. Setting both makes all delegates respond.
 
 #### Watermark
 
@@ -350,10 +361,12 @@ the sole author.
 ### PHPUnit
 
 - Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`,
-  `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`, `ImageUrlExtension`
+  `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`, `ImageUrlExtension`, `ImagickProcessor`
+  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder)
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), avif/webp format generation, watermark processing, SVG passthrough
-- Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
+- Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (400x300 high-frequency, for
+  quality-sensitivity tests), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference
 
