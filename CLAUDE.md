@@ -37,6 +37,7 @@ src/
 ├── Service/
 │   ├── ImageProcessorInterface.php
 │   ├── ImagickProcessor.php
+│   ├── ExifOrientation.php
 │   ├── FormatNegotiator.php
 │   ├── SrcsetGenerator.php
 │   ├── BlurPlaceholderGenerator.php
@@ -151,7 +152,8 @@ configured file permissions (needed because `tempnam()` creates files with `0600
   tmp file in the TARGET directory (guaranteeing atomic intra-filesystem rename), invokes the callback with that path,
   then atomic-renames to the final cache location. Per-variant `flock` on a sibling `.lock` file prevents thundering
   herd when N concurrent requests race for the same uncached variant.
-- Autorotation from EXIF orientation data
+- Autorotation from EXIF orientation data via `ExifOrientation` — the single rule also used by `ImageMetadataReader`
+  and `BlurPlaceholderGenerator`, so render-time dimensions and placeholders match the processed output
 - Directory creation uses race-condition-safe pattern: `!is_dir() && !mkdir() && !is_dir()`
 - File and directory permissions are configurable (`file_permissions`, `directory_permissions`). Applied via `chmod()`
   after file creation — fixes `0600` permissions from `tempnam()`/`rename()`. Only called on cache miss, zero overhead
@@ -173,11 +175,16 @@ server-side processing. The server always resizes by `width` only, preserving so
 
 Same rule applies to `image_url()` Twig function — `height` without `fit` is ignored in URL generation.
 
+Exception: `fit="scale-down"` with a source smaller than the box replaces `width`/`height` with the source dimensions
+(see Fit modes).
+
 #### Fit modes
 
 - `cover` — fill dimensions, crop from center (`cropThumbnailImage`)
 - `contain` — fit within dimensions, preserve aspect ratio (`thumbnailImage`)
-- `scale-down` — like contain, but never upscales
+- `scale-down` — like contain, but never upscales. When the source fits the box (`origW <= width` and
+  `origH <= height`, or height unknown), the component and `image_url()` use the source dimensions as the effective
+  width/height (`ImageMetadataReader::resolveScaleDownDimensions()`), so srcset has no candidates above the source width.
 
 #### Lossless encoding
 
@@ -242,14 +249,19 @@ srcset, no blur. SVG URLs go through `route_prefix` (not raw source path), so th
 **I/O during render (component `mount()`):**
 
 - `auto_dimensions` enabled (globally or via `autoDimensions` prop) + no `height` prop: reads image metadata via
-  `ImageMetadataReader` (cache hit: ~5-10 μs file read, cache miss: ~10-30 ms Imagick)
+  `ImageMetadataReader` (cache hit: ~5-10 μs file read, cache miss: < 0.1 ms Imagick ping — except WebP with EXIF,
+  which is decoded fully: ~6 ms at 1.2 MP, ~67 ms at 12 MP, ~133 ms at 24 MP)
+- `fit="scale-down"` on a raster source (with or without `autoDimensions`): reads image metadata via
+  `ImageMetadataReader::resolveScaleDownDimensions()` (same costs as above, including the WebP-with-EXIF full decode)
 - `blur` enabled: reads blur data URI via `BlurPlaceholderGenerator` (cache hit: ~5-10 μs file read, cache miss: ~50-100
   ms Imagick)
 - With warm cache, 50 images on a page ≈ 250-500 μs total I/O overhead
 
 ### Blur placeholder
 
-`BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). Cached
+`BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). The
+source is autorotated (`ExifOrientation::autoRotate()`) before the thumbnail, so the placeholder has the displayed
+orientation. Cached
 as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`). In-memory cache per request.
 Implements `ResetInterface` for FrankenPHP.
 
@@ -257,10 +269,15 @@ Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onl
 
 ### Image metadata
 
-`ImageMetadataReader` reads source image dimensions via Imagick. Cached as `meta.json` in the source image's cache
-directory (`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
+`ImageMetadataReader` reads source image dimensions via Imagick `pingImage()` (header only), except WebP with the
+VP8X EXIF flag, which is read fully because ImageMagick's WebP ping skips the EXIF chunk. Dimensions are the displayed
+ones: for 90° EXIF orientations (`ExifOrientation::isQuarterTurn()`) width and height are swapped, matching
+the processor's autorotation. Cached as `meta.json` in the source image's cache directory
+(`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
 
-Used by `auto_dimensions` feature — when only `width` is provided, height is calculated from the source aspect ratio.
+Used by `auto_dimensions` and `fit="scale-down"` — with `auto_dimensions`, when only `width` is provided, height is
+calculated from the source aspect ratio; with `scale-down`, `resolveScaleDownDimensions()` decides whether the source
+fits the box.
 The `calculateHeight(string $src, int $width): ?int` method encapsulates the proportional height calculation — used by
 both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 
@@ -281,7 +298,8 @@ both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 - `generate(string $src, int $width, ...)` — generate URL for a specific format
 - `generateFromRequest(Request $request, string $src, int $width, ...)` — negotiate format from Accept header
 
-Used for API responses, emails, or any context outside Twig templates.
+Used for API responses, emails, or any context outside Twig templates. Unlike `<twig:Image>` and `image_url()`, it
+does not replace a `scale-down` width/height with the source dimensions, so its URL can be a separate cache variant.
 
 ### Twig function `image_url()`
 
@@ -362,12 +380,15 @@ the sole author.
 
 - Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`,
   `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`, `ImageUrlExtension`, `ImagickProcessor`
-  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder)
+  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder), `ImageMetadataReader` (scale-down fit,
+  EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) — `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), avif/webp format generation, watermark processing, SVG passthrough
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity
-  tests), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
+  tests), `tests/Fixtures/rotated.jpg` (stored 40x30 with EXIF Orientation=6, displayed 30x40),
+  `tests/Fixtures/rotated.webp` (same, as WebP with EXIF chunk), `tests/Fixtures/plain.webp` (40x30, no EXIF),
+  `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference
 

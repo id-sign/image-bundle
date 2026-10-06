@@ -308,6 +308,56 @@ class ImageUrlExtensionTest extends TestCase
         self::assertStringNotContainsString('_lossless', $url);
     }
 
+    public function testScaleDownUsesSourceDimensionsWhenSourceFits(): void
+    {
+        $this->metadataReader->method('resolveScaleDownDimensions')
+            ->willReturn(['width' => 100, 'height' => 75]);
+
+        $url = $this->extension->imageUrl('photo.jpg', 800, fit: 'scale-down', format: 'webp');
+
+        self::assertStringContainsString('_100_75_scale-down', $url);
+    }
+
+    public function testScaleDownKeepsRequestedWidthWhenSourceDoesNotFit(): void
+    {
+        $this->metadataReader->method('resolveScaleDownDimensions')->willReturn(null);
+
+        $url = $this->extension->imageUrl('photo.jpg', 800, fit: 'scale-down', format: 'webp');
+
+        self::assertStringContainsString('_800_auto_scale-down', $url);
+    }
+
+    public function testOtherFitDoesNotResolveScaleDownDimensions(): void
+    {
+        $url = $this->createExtensionNeverResolvingScaleDown()->imageUrl('photo.jpg', 800, fit: 'cover', format: 'webp');
+
+        self::assertStringContainsString('_800_', $url);
+    }
+
+    public function testSvgDoesNotResolveScaleDownDimensions(): void
+    {
+        $url = $this->createExtensionNeverResolvingScaleDown()->imageUrl('icons/logo.svg', 120, fit: 'scale-down', format: 'webp');
+
+        self::assertStringStartsWith('/_image/', $url);
+    }
+
+    private function createExtensionNeverResolvingScaleDown(): ImageUrlExtension
+    {
+        $metadataReader = $this->createMock(ImageMetadataReader::class);
+        $metadataReader->expects(self::never())->method('resolveScaleDownDimensions');
+
+        return new ImageUrlExtension(
+            $this->createUrlGenerator(),
+            $metadataReader,
+            $this->requestStack,
+            80,
+            null,
+            false,
+            4096,
+            false,
+        );
+    }
+
     private function createUrlGenerator(): ImageUrlGenerator
     {
         $signer = new UrlSigner('test-secret');

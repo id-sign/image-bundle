@@ -90,6 +90,15 @@ class ImageComponent
             $this->resolvedHeight = $this->height;
         }
 
+        if ('scale-down' === $this->fit && !$this->isSvg()) {
+            $sourceDimensions = $this->metadataReader->resolveScaleDownDimensions($this->src, $this->width, $this->resolvedHeight);
+
+            if (null !== $sourceDimensions) {
+                $this->width = $sourceDimensions['width'];
+                $this->resolvedHeight = $sourceDimensions['height'];
+            }
+        }
+
         $this->processingHeight = null !== $this->fit ? $this->resolvedHeight : null;
     }
 

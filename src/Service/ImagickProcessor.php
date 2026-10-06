@@ -40,7 +40,7 @@ class ImagickProcessor implements ImageProcessorInterface
         $imagick = new \Imagick($sourcePath);
 
         try {
-            $this->autoRotate($imagick);
+            ExifOrientation::autoRotate($imagick);
 
             $origWidth = $imagick->getImageWidth();
             $origHeight = $imagick->getImageHeight();
@@ -228,22 +228,5 @@ class ImagickProcessor implements ImageProcessorInterface
             })(),
             default => null,
         };
-    }
-
-    /**
-     * @throws \ImagickException
-     */
-    private function autoRotate(\Imagick $imagick): void
-    {
-        $orientation = $imagick->getImageOrientation();
-
-        match ($orientation) {
-            \Imagick::ORIENTATION_BOTTOMRIGHT => $imagick->rotateImage(new \ImagickPixel('none'), 180),
-            \Imagick::ORIENTATION_RIGHTTOP => $imagick->rotateImage(new \ImagickPixel('none'), 90),
-            \Imagick::ORIENTATION_LEFTBOTTOM => $imagick->rotateImage(new \ImagickPixel('none'), -90),
-            default => null,
-        };
-
-        $imagick->setImageOrientation(\Imagick::ORIENTATION_TOPLEFT);
     }
 }
