@@ -67,6 +67,27 @@ class ImageMetadataReader implements ResetInterface
         return (int) round($dimensions['height'] * $width / $dimensions['width']);
     }
 
+    /**
+     * Source dimensions when a scale-down output keeps the source size (mirrors ImagickProcessor::fitScaleDown()),
+     * otherwise null. A null height means the box is unbounded vertically.
+     *
+     * @return array{width: int, height: int}|null
+     */
+    public function resolveScaleDownDimensions(string $src, int $width, ?int $height): ?array
+    {
+        $dimensions = $this->getDimensions($src);
+
+        if ($dimensions['width'] <= 0 || $dimensions['width'] > $width) {
+            return null;
+        }
+
+        if (null !== $height && $dimensions['height'] > $height) {
+            return null;
+        }
+
+        return $dimensions;
+    }
+
     public function reset(): void
     {
         $this->cache = [];
@@ -87,13 +108,30 @@ class ImageMetadataReader implements ResetInterface
             // which decodes the full pixel buffer just to learn the dimensions.
             $imagick->pingImage($sourcePath);
 
-            return [
-                'width' => $imagick->getImageWidth(),
-                'height' => $imagick->getImageHeight(),
-            ];
+            // ImageMagick's WebP coder returns from ping before it reads the EXIF chunk, so the orientation is lost.
+            if ('WEBP' === $imagick->getImageFormat() && self::hasWebpExifFlag($sourcePath)) {
+                $imagick->clear();
+                $imagick->readImage($sourcePath);
+            }
+
+            $width = $imagick->getImageWidth();
+            $height = $imagick->getImageHeight();
+
+            if (ExifOrientation::isQuarterTurn($imagick)) {
+                [$width, $height] = [$height, $width];
+            }
+
+            return ['width' => $width, 'height' => $height];
         } finally {
             $imagick->clear();
         }
+    }
+
+    private static function hasWebpExifFlag(string $path): bool
+    {
+        $header = (string) file_get_contents($path, false, null, 0, 21);
+
+        return 21 === \strlen($header) && 'VP8X' === substr($header, 12, 4) && 0 !== (\ord($header[20]) & 0x08);
     }
 
     private function getCachePath(string $src): string

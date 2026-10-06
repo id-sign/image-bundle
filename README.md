@@ -262,7 +262,8 @@ Controls how the image is resized when both `width` and `height` are specified:
   positioning, omit `fit` and use CSS `object-fit` + `object-position` instead — this gives full control over the
   visible area in the browser.
 - **`contain`** — fits within the target dimensions, preserving aspect ratio (may leave empty space)
-- **`scale-down`** — same as `contain`, but never upscales images smaller than the target
+- **`scale-down`** — same as `contain`, but never upscales images smaller than the target. When the source is
+  smaller, the rendered `width`/`height` attributes, `srcset` and URL reflect the actual source size.
 
 When omitted, the image is resized to the exact dimensions, which may distort the aspect ratio.
 
@@ -575,6 +576,12 @@ php bin/console image:purge --accessed-before=14 --force
 # Combine both
 php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 ```
+
+### Upgrading from v0.2.4 or earlier
+
+Cached dimensions (`meta.json`) and blur placeholders (`blur.txt`) now follow EXIF orientation. Entries cached by an
+older version keep the stored (unrotated) size of rotated photos, so purge once after upgrading — everything with
+`php bin/console image:purge --force`, or only the affected sources with `image:purge <src> --force`.
 
 ### Programmatic cache invalidation
 

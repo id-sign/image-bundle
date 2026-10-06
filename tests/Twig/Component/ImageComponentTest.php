@@ -7,8 +7,10 @@ namespace IdSign\ImageBundle\Tests\Twig\Component;
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\BlurPlaceholderGenerator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
+use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
 use IdSign\ImageBundle\Service\UrlSigner;
+use IdSign\ImageBundle\Source\LocalFilesystemSource;
 use IdSign\ImageBundle\Twig\Component\ImageComponent;
 use PHPUnit\Framework\TestCase;
 
@@ -383,5 +385,132 @@ class ImageComponentTest extends TestCase
         $component->postMount();
 
         self::assertSame('/_image/icons/my%20logo.svg', $component->getSvgSrc());
+    }
+
+    public function testScaleDownUsesSourceDimensionsWhenSourceFits(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'photo.jpg';
+        $component->width = 1200;
+        $component->fit = 'scale-down';
+
+        $this->metadataReader->expects($this->once())->method('resolveScaleDownDimensions')
+            ->with('photo.jpg', 1200, null)
+            ->willReturn(['width' => 100, 'height' => 75]);
+
+        $component->postMount();
+
+        self::assertSame(100, $component->width);
+        self::assertSame(75, $component->getResolvedHeight());
+        self::assertStringContainsString('_100_75_scale-down', $component->getFallbackSrc());
+
+        foreach ($component->getSources() as $source) {
+            self::assertStringEndsWith(' 100w', $source['srcset']);
+            self::assertSame(1, preg_match_all('/ (\d+)w/', $source['srcset'], $matches));
+            self::assertSame(['100'], $matches[1]);
+            self::assertStringContainsString('_100_75_scale-down', $source['srcset']);
+        }
+    }
+
+    public function testScaleDownPassesAutoDimensionsHeight(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'photo.jpg';
+        $component->width = 1200;
+        $component->fit = 'scale-down';
+        $component->autoDimensions = true;
+
+        $this->metadataReader->method('calculateHeight')->willReturn(900);
+        $this->metadataReader->expects($this->once())->method('resolveScaleDownDimensions')
+            ->with('photo.jpg', 1200, 900)
+            ->willReturn(['width' => 100, 'height' => 75]);
+
+        $component->postMount();
+
+        self::assertSame(100, $component->width);
+        self::assertSame(75, $component->getResolvedHeight());
+    }
+
+    public function testScaleDownKeepsRequestedSizeWhenSourceDoesNotFit(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'photo.jpg';
+        $component->width = 1200;
+        $component->fit = 'scale-down';
+
+        $this->metadataReader->expects($this->once())->method('resolveScaleDownDimensions')->willReturn(null);
+
+        $component->postMount();
+
+        self::assertSame(1200, $component->width);
+        self::assertNull($component->getResolvedHeight());
+        self::assertStringContainsString('_1200_auto_scale-down', $component->getFallbackSrc());
+
+        foreach ($component->getSources() as $source) {
+            self::assertStringEndsWith(' 1200w', $source['srcset']);
+        }
+    }
+
+    public function testScaleDownUsesDisplayedDimensionsOfExifRotatedSource(): void
+    {
+        $cacheDir = sys_get_temp_dir().'/id_sign_image_component_test_'.uniqid();
+        $resolver = new CachePathResolver(new UrlSigner('test-secret'));
+        $component = new ImageComponent(
+            new SrcsetGenerator($resolver, [640, 1080], '/_image'),
+            $resolver,
+            $this->createStub(BlurPlaceholderGenerator::class),
+            new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../../Fixtures'), new SourceSizeValidator(0), $cacheDir, null, 0o770),
+            80,
+            ['webp'],
+            '/_image',
+            false,
+            false,
+            null,
+            4096,
+            false,
+        );
+        $component->src = 'rotated.jpg';
+        $component->width = 1200;
+        $component->fit = 'scale-down';
+
+        try {
+            $component->postMount();
+        } finally {
+            unlink($cacheDir.'/rotated.jpg/meta.json');
+            rmdir($cacheDir.'/rotated.jpg');
+            rmdir($cacheDir);
+        }
+
+        self::assertSame(30, $component->width);
+        self::assertSame(40, $component->getResolvedHeight());
+        self::assertStringContainsString('_30_40_scale-down', $component->getFallbackSrc());
+    }
+
+    public function testOtherFitDoesNotResolveScaleDownDimensions(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'photo.jpg';
+        $component->width = 1200;
+        $component->fit = 'cover';
+
+        $this->metadataReader->expects($this->never())->method('resolveScaleDownDimensions');
+
+        $component->postMount();
+
+        self::assertSame(1200, $component->width);
+    }
+
+    public function testSvgDoesNotResolveScaleDownDimensions(): void
+    {
+        $component = $this->createComponent();
+        $component->src = 'icons/logo.svg';
+        $component->width = 120;
+        $component->fit = 'scale-down';
+
+        $this->metadataReader->expects($this->never())->method('resolveScaleDownDimensions');
+
+        $component->postMount();
+
+        self::assertSame(120, $component->width);
     }
 }

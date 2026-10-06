@@ -69,6 +69,7 @@ class BlurPlaceholderGenerator implements ResetInterface
             $hint = ($this->blurSize * 8).'x';
             $imagick->setOption('jpeg:size', $hint);
             $imagick->readImage($sourcePath);
+            ExifOrientation::autoRotate($imagick);
             $imagick->thumbnailImage($this->blurSize, 0);
             $imagick->setImageFormat('JPEG');
             $imagick->setImageCompressionQuality($this->blurQuality);
