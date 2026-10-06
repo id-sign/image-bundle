@@ -45,6 +45,11 @@ class ImageMetadataReader implements ResetInterface
             }
         }
 
+        // Not written to disk, so a source uploaded later is picked up after reset().
+        if (!$this->imageSource->exists($src)) {
+            return $this->cache[$src] = ['width' => 0, 'height' => 0];
+        }
+
         $dimensions = $this->readDimensions($src);
         $this->writeCache($cachePath, json_encode($dimensions, \JSON_THROW_ON_ERROR));
         $this->cache[$src] = $dimensions;

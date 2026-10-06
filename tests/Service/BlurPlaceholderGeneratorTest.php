@@ -45,4 +45,20 @@ class BlurPlaceholderGeneratorTest extends TestCase
         self::assertSame(10, $imagick->getImageWidth());
         self::assertGreaterThan(10, $imagick->getImageHeight());
     }
+
+    public function testMissingSourceYieldsEmptyPlaceholderWithoutCacheWrite(): void
+    {
+        $generator = new BlurPlaceholderGenerator(
+            new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+            new SourceSizeValidator(0),
+            $this->cacheDir,
+            10,
+            30,
+            null,
+            0o770,
+        );
+
+        self::assertSame('', $generator->generate('missing.jpg'));
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/missing.jpg');
+    }
 }

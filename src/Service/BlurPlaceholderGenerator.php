@@ -43,6 +43,11 @@ class BlurPlaceholderGenerator implements ResetInterface
             }
         }
 
+        // Not written to disk, so a source uploaded later is picked up after reset().
+        if (!$this->imageSource->exists($src)) {
+            return $this->cache[$src] = '';
+        }
+
         $dataUri = $this->createBlurDataUri($src);
         $this->writeCache($cachePath, $dataUri);
         $this->cache[$src] = $dataUri;

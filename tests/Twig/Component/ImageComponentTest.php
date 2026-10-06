@@ -486,6 +486,46 @@ class ImageComponentTest extends TestCase
         self::assertStringContainsString('_30_40_scale-down', $component->getFallbackSrc());
     }
 
+    public function testMissingSourceRendersWithoutHeightAndBlur(): void
+    {
+        $cacheDir = sys_get_temp_dir().'/id_sign_image_component_test_'.uniqid();
+        mkdir($cacheDir, 0o770, true);
+        $source = new LocalFilesystemSource(__DIR__.'/../../Fixtures');
+        $resolver = new CachePathResolver(new UrlSigner('test-secret'));
+        $component = new ImageComponent(
+            new SrcsetGenerator($resolver, [640, 1080], '/_image'),
+            $resolver,
+            new BlurPlaceholderGenerator($source, new SourceSizeValidator(0), $cacheDir, 10, 30, null, 0o770),
+            new ImageMetadataReader($source, new SourceSizeValidator(0), $cacheDir, null, 0o770),
+            80,
+            ['webp'],
+            '/_image',
+            false,
+            false,
+            null,
+            4096,
+            false,
+        );
+        $component->src = 'missing.jpg';
+        $component->width = 800;
+        $component->autoDimensions = true;
+        $component->blur = true;
+        $component->fit = 'scale-down';
+
+        try {
+            $component->postMount();
+            $blurDataUri = $component->getBlurDataUri();
+            $cacheEntries = array_diff((array) scandir($cacheDir), ['.', '..']);
+        } finally {
+            rmdir($cacheDir);
+        }
+
+        self::assertSame(800, $component->width);
+        self::assertNull($component->getResolvedHeight());
+        self::assertSame('', $blurDataUri);
+        self::assertSame([], $cacheEntries);
+    }
+
     public function testOtherFitDoesNotResolveScaleDownDimensions(): void
     {
         $component = $this->createComponent();

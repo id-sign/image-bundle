@@ -256,6 +256,9 @@ srcset, no blur. SVG URLs go through `route_prefix` (not raw source path), so th
 - `blur` enabled: reads blur data URI via `BlurPlaceholderGenerator` (cache hit: ~5-10 μs file read, cache miss: ~50-100
   ms Imagick)
 - With warm cache, 50 images on a page ≈ 250-500 μs total I/O overhead
+- Missing source: on a `meta.json`/`blur.txt` cache miss both services call `ImageSourceInterface::exists()` first
+  (one call per uncached image — mind the cost with a remote source); when it returns false the page renders without
+  `height` and blur, and the image URL returns 404 from the controller
 
 ### Blur placeholder
 
@@ -263,7 +266,8 @@ srcset, no blur. SVG URLs go through `route_prefix` (not raw source path), so th
 source is autorotated (`ExifOrientation::autoRotate()`) before the thumbnail, so the placeholder has the displayed
 orientation. Cached
 as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`). In-memory cache per request.
-Implements `ResetInterface` for FrankenPHP.
+Implements `ResetInterface` for FrankenPHP. A missing source (`exists()` false) yields `''` (no placeholder) kept only
+in the in-memory cache — no `blur.txt` is written, so a source uploaded later is picked up on the next request.
 
 Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onload>`.
 
@@ -273,7 +277,9 @@ Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onl
 VP8X EXIF flag, which is read fully because ImageMagick's WebP ping skips the EXIF chunk. Dimensions are the displayed
 ones: for 90° EXIF orientations (`ExifOrientation::isQuarterTurn()`) width and height are swapped, matching
 the processor's autorotation. Cached as `meta.json` in the source image's cache directory
-(`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP.
+(`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP. A missing
+source (`exists()` false) yields `0×0` kept only in the in-memory cache — no `meta.json` is written, so a source
+uploaded later is picked up on the next request.
 
 Used by `auto_dimensions` and `fit="scale-down"` — with `auto_dimensions`, when only `width` is provided, height is
 calculated from the source aspect ratio; with `scale-down`, `resolveScaleDownDimensions()` decides whether the source

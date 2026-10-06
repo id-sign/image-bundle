@@ -252,7 +252,8 @@ dimensions.
 
 Overrides the global `auto_dimensions` config for this specific component instance. When `true`, height is
 auto-calculated from the source aspect ratio (if `height` is not provided). When `false`, auto-calculation is disabled
-even if the global config is enabled. When omitted (`null`), the global config value is used.
+even if the global config is enabled. When omitted (`null`), the global config value is used. When the source image does
+not exist, no `height` is rendered and the page still renders — the image itself returns 404.
 
 ### `fit`
 
@@ -271,7 +272,8 @@ When omitted, the image is resized to the exact dimensions, which may distort th
 
 Enables an inline blur placeholder. A tiny 10px-wide JPEG thumbnail is base64-encoded and rendered as a CSS
 `background-image` with `filter: blur(20px)`. Once the full image loads, the placeholder is removed via `onload`. The
-placeholder is generated on-demand and cached on disk.
+placeholder is generated on-demand and cached on disk. When the source image does not exist, no placeholder is rendered
+and the image itself returns 404.
 
 Can be set globally via `blur.enabled` in bundle configuration. The component attribute overrides the global setting.
 
