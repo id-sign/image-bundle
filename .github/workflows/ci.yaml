@@ -53,9 +53,12 @@ jobs:
 
       # ubuntu-24.04 ships libheif with AVIF decode only — AV1 encoder lives in a
       # separate plugin package. See actions/runner-images#13728 for the upstream
-      # decision not to include it in the base image.
+      # decision not to include it in the base image. The runner image's apt index
+      # goes stale (mirror 404s on superseded .deb versions), so refresh it first.
       - name: Install AVIF encoder plugin
-        run: sudo apt-get install -y libheif-plugin-aomenc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libheif-plugin-aomenc
 
       - uses: shivammathur/setup-php@v2
         with:
