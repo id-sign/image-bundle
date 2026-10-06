@@ -75,6 +75,15 @@ class ImageMetadataReaderTest extends TestCase
 
     public function testDimensionsFollowExifOrientationOfWebp(): void
     {
+        // ImageMagick 6 (Ubuntu 24.04 / CI) never exposes WebP EXIF orientation, not even on a full
+        // read — the processor then does not rotate either, so reader and output stay consistent.
+        $probe = new \Imagick(__DIR__.'/../Fixtures/rotated.webp');
+        $orientation = $probe->getImageOrientation();
+        $probe->clear();
+        if (\Imagick::ORIENTATION_RIGHTTOP !== $orientation) {
+            self::markTestSkipped('This ImageMagick build does not read EXIF orientation from WebP.');
+        }
+
         self::assertSame(['width' => 30, 'height' => 40], $this->reader->getDimensions('rotated.webp'));
     }
 
