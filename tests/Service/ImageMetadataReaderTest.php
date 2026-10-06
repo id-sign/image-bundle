@@ -92,6 +92,45 @@ class ImageMetadataReaderTest extends TestCase
         self::assertSame(['width' => 40, 'height' => 30], $this->reader->getDimensions('plain.webp'));
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function missingSourceProvider(): iterable
+    {
+        yield 'missing file' => ['missing.jpg'];
+        yield 'path traversal' => ['../test.jpg'];
+        yield 'empty segment' => ['a//b.jpg'];
+    }
+
+    #[DataProvider('missingSourceProvider')]
+    public function testMissingSourceYieldsZeroDimensionsWithoutCacheWrite(string $src): void
+    {
+        self::assertSame(['width' => 0, 'height' => 0], $this->reader->getDimensions($src));
+        self::assertNull($this->reader->calculateHeight($src, 800));
+        self::assertNull($this->reader->resolveScaleDownDimensions($src, 800, null));
+        self::assertSame([], array_diff((array) scandir($this->cacheDir), ['.', '..']));
+    }
+
+    public function testSourceAddedAfterMissIsReadAfterReset(): void
+    {
+        $sourceDir = sys_get_temp_dir().'/id_sign_image_meta_source_'.uniqid();
+        mkdir($sourceDir, 0o775, true);
+        $reader = new ImageMetadataReader(new LocalFilesystemSource($sourceDir), new SourceSizeValidator(0), $this->cacheDir, null, 0o770);
+
+        try {
+            self::assertSame(['width' => 0, 'height' => 0], $reader->getDimensions('late.jpg'));
+
+            copy(__DIR__.'/../Fixtures/test.jpg', $sourceDir.'/late.jpg');
+            self::assertSame(['width' => 0, 'height' => 0], $reader->getDimensions('late.jpg'));
+
+            $reader->reset();
+            self::assertSame(['width' => 100, 'height' => 75], $reader->getDimensions('late.jpg'));
+            self::assertFileExists($this->cacheDir.'/late.jpg/meta.json');
+        } finally {
+            $this->removeDir($sourceDir);
+        }
+    }
+
     private function removeDir(string $dir): void
     {
         if (!is_dir($dir)) {

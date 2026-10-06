@@ -8,7 +8,9 @@ use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
+use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\UrlSigner;
+use IdSign\ImageBundle\Source\LocalFilesystemSource;
 use IdSign\ImageBundle\Twig\ImageUrlExtension;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -212,6 +214,26 @@ class ImageUrlExtensionTest extends TestCase
         $url = $extension->imageUrl('icons/logo.svg', 120, format: 'webp');
 
         self::assertStringStartsWith('/_image/', $url);
+    }
+
+    public function testAutoDimensionsWithMissingSourceKeepsAutoHeight(): void
+    {
+        $cacheDir = sys_get_temp_dir().'/id_sign_image_url_test_'.uniqid();
+        $extension = new ImageUrlExtension(
+            $this->createUrlGenerator(),
+            new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../Fixtures'), new SourceSizeValidator(0), $cacheDir, null, 0o770),
+            $this->requestStack,
+            80,
+            null,
+            false,
+            4096,
+            false,
+        );
+
+        $url = $extension->imageUrl('missing.jpg', 800, autoDimensions: true, format: 'webp');
+
+        self::assertStringContainsString('_800_auto_', $url);
+        self::assertDirectoryDoesNotExist($cacheDir);
     }
 
     public function testGlobalAutoDimensionsRespected(): void
