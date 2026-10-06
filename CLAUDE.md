@@ -328,8 +328,10 @@ config, overridable per call.
 ### Srcset generation
 
 `SrcsetGenerator` creates srcset entries from `device_sizes` breakpoints. Only includes breakpoints ≤ the component's
-`width`. Heights are proportionally calculated when `height` is provided. The main `width` is always included as the
-largest entry. Default `sizes` attribute: `100vw`.
+`width`. Heights are proportionally calculated when `height` is provided — `ceil()` for `contain`/`scale-down`,
+`round()` for `cover`, always ≥ 1 px. Bestfit shrinks to the tighter box side, so a rounded-down height would deliver a
+candidate narrower than its `w` descriptor; `cover` crops to the box exactly. The main `width` is always included as
+the largest entry. Default `sizes` attribute: `100vw`.
 
 ### Controller
 
@@ -386,8 +388,9 @@ the sole author.
 
 - Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`,
   `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`, `ImageUrlExtension`, `ImagickProcessor`
-  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder), `ImageMetadataReader` (scale-down fit,
-  EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) — `ExifOrientation` is covered through these two
+  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width),
+  `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
+  `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), avif/webp format generation, watermark processing, SVG passthrough
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
