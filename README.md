@@ -585,6 +585,9 @@ Cached dimensions (`meta.json`) and blur placeholders (`blur.txt`) now follow EX
 older version keep the stored (unrotated) size of rotated photos, so purge once after upgrading — everything with
 `php bin/console image:purge --force`, or only the affected sources with `image:purge <src> --force`.
 
+Srcset breakpoints for `fit="contain"` and `fit="scale-down"` now round the box height up, so every candidate is
+exactly as wide as its `w` descriptor. Their URLs changed; the old variants stay in the cache until `image:purge`.
+
 ### Programmatic cache invalidation
 
 Inject `CacheStorageInterface` to invalidate cache from your application code:

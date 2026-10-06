@@ -23,7 +23,8 @@ class SrcsetGenerator
      *
      * Only includes breakpoints strictly < the specified width. The main width itself
      * is appended separately by the caller (ImageComponent), so we skip breakpoints
-     * equal to width to avoid duplicate srcset entries.
+     * equal to width to avoid duplicate srcset entries. Breakpoint heights round up for
+     * contain/scale-down and to nearest for cover, never below 1 px.
      *
      * @return list<array{url: string, width: int}>
      */
@@ -37,7 +38,7 @@ class SrcsetGenerator
         ?string $watermark = null,
         bool $lossless = false,
     ): array {
-        $aspectRatio = (null !== $height && $width > 0) ? $height / $width : null;
+        $bestfit = \in_array($fit, ['contain', 'scale-down'], true);
         $entries = [];
 
         foreach ($this->deviceSizes as $breakpoint) {
@@ -45,7 +46,13 @@ class SrcsetGenerator
                 continue;
             }
 
-            $breakpointHeight = null !== $aspectRatio ? (int) round($breakpoint * $aspectRatio) : null;
+            $breakpointHeight = null;
+            if (null !== $height && $width > 0) {
+                // Bestfit shrinks to the tighter box side, so a rounded-down height would make the
+                // output narrower than its w descriptor; cover crops to the box exactly.
+                $exactHeight = $breakpoint * $height / $width;
+                $breakpointHeight = max(1, (int) ($bestfit ? ceil($exactHeight) : round($exactHeight)));
+            }
             $cachePath = $this->cachePathResolver->resolve($src, $breakpoint, $breakpointHeight, $fit, $quality, $format, $watermark, $lossless);
 
             $entries[] = [

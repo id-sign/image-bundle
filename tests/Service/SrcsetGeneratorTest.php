@@ -7,6 +7,7 @@ namespace IdSign\ImageBundle\Tests\Service;
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
 use IdSign\ImageBundle\Service\UrlSigner;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class SrcsetGeneratorTest extends TestCase
@@ -67,6 +68,53 @@ class SrcsetGeneratorTest extends TestCase
 
         self::assertCount(1, $entry640);
         self::assertStringContainsString('640_480_cover_80', $entry640[0]['url']);
+    }
+
+    public function testGenerateWithoutFitKeepsAutoHeight(): void
+    {
+        $entries = $this->generator->generate('photo.jpg', 800, null, null, 80, 'avif');
+
+        self::assertStringContainsString('_640_auto_none_80', $entries[0]['url']);
+    }
+
+    #[DataProvider('bestfitModes')]
+    public function testGenerateRoundsBestfitHeightUp(string $fit): void
+    {
+        $urls = array_column($this->generator->generate('photo.jpg', 1408, 848, $fit, 80, 'avif'), 'url', 'width');
+
+        self::assertStringContainsString('_640_386_'.$fit.'_80', $urls[640]);
+        self::assertStringContainsString('_1080_651_'.$fit.'_80', $urls[1080]);
+
+        $urls = array_column($this->generator->generate('photo.jpg', 760, 836, $fit, 80, 'avif'), 'url', 'width');
+
+        self::assertStringContainsString('_750_825_'.$fit.'_80', $urls[750]);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function bestfitModes(): iterable
+    {
+        yield 'contain' => ['contain'];
+        yield 'scale-down' => ['scale-down'];
+    }
+
+    public function testGenerateKeepsBestfitHeightAtLeastOnePixel(): void
+    {
+        $entries = $this->generator->generate('photo.jpg', 2560, 1, 'scale-down', 80, 'avif');
+
+        self::assertNotSame([], $entries);
+
+        foreach ($entries as $entry) {
+            self::assertStringContainsString('_'.$entry['width'].'_1_scale-down_', $entry['url']);
+        }
+    }
+
+    public function testGenerateKeepsCoverHeightAtLeastOnePixel(): void
+    {
+        $urls = array_column($this->generator->generate('photo.jpg', 4096, 3, 'cover', 80, 'avif'), 'url', 'width');
+
+        self::assertStringContainsString('_640_1_cover_', $urls[640]);
     }
 
     public function testGenerateUrlEncodesSrcWithSpaces(): void
