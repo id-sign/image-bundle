@@ -41,6 +41,7 @@ src/
 │   ├── ImageProcessorInterface.php
 │   ├── ImagickProcessor.php
 │   ├── ExifOrientation.php
+│   ├── ColorProfile.php
 │   ├── FormatNegotiator.php
 │   ├── SrcsetGenerator.php
 │   ├── BlurPlaceholderGenerator.php
@@ -71,6 +72,9 @@ templates/components/
 config/
 ├── services.yaml
 └── routes.yaml
+
+resources/
+└── sRGB2014.icc
 ```
 
 ### Key design decisions
@@ -232,6 +236,16 @@ Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box thro
   already decodes small). Output is pixel-identical for the proportional resize; `cover`/`contain` may differ from
   rotate-first by ≤1/255 (integer crop offset, 16-bit intermediate rounding in `thumbnailImage`), far below encoder
   noise, so cached variants stay valid. The watermark is applied after the rotation.
+- **Colour management:** `ColorProfile::normalizeToSrgb()` runs after the fit and rotation, before the watermark and
+  `stripImage()`. An image with an embedded ICC profile is converted through it with `profileImage('icc', sRGB2014)`
+  (LCMS). `transformImageColorspace(sRGB)` alone — what the bundle did up to 0.3 — is a no-op there: ImageMagick
+  reports an RGB-encoded image as sRGB whatever its profile says, so Display P3 photos (every iPhone), Adobe RGB and
+  CMYK sources came out washed out once the profile was stripped. Profile-less images are assumed sRGB and get only
+  the colorspace transform (CMYK/gray without profile); a profile LCMS rejects falls back to that too. ~80 ns per
+  pixel (40 ms at 800×600), cache miss only. Target: the ICC's `sRGB2014.icc` in `resources/` — measured against the
+  sRGB profiles found in real files (HP "sRGB IEC61966-2.1", Apple/Google compact "sRGB"/"c2", GIMP built-in) the
+  conversion changes ≤1/255 on a few values, i.e. nothing, while the deprecated "no black scaling" profile would lift
+  dark tones by up to 30/255. Identical results on ImageMagick 6.9.12 (Ubuntu 24.04) and 7.1.2.
 - **Source limits:** `SourceSizeValidator::assertFits()` checks `max_source_bytes`, `assertPixelsFit()` checks
   `max_source_pixels` (default 64 MP) against width × height from the `pingImage()` the processor, the metadata reader
   and the blur generator do before decoding — the blur generator pings for this reason alone, since a non-JPEG source
@@ -352,7 +366,8 @@ once in `postMount()`) instead of signing URLs the SVG branch of the template ne
 
 `BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). The
 source is autorotated (`ExifOrientation::autoRotate()`) before the thumbnail, so the placeholder has the displayed
-orientation. Cached as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`), written
+orientation, and the 10 px result is converted to sRGB through its ICC profile (`ColorProfile::normalizeToSrgb()`),
+so it has the colours of the variant. Cached as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`), written
 atomically through `CacheStorageInterface::writeLocked()` (tmp file + rename, directory and permissions handled by the
 storage) and read via `getAbsolutePath()` without the storage's TTL; an empty or corrupt `blur.txt` counts as a miss
 and is rewritten. In-memory cache per request. Implements `ResetInterface` for FrankenPHP. A missing source (`exists()`
@@ -487,7 +502,7 @@ the sole author.
 
 ### PHPUnit
 
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `SourceSizeValidator`, `LocalFilesystemSource`,
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `SourceSizeValidator`, `ColorProfile`, `LocalFilesystemSource`,
   `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
   `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
@@ -504,7 +519,9 @@ the sole author.
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity
   tests), `tests/Fixtures/rotated.jpg` (stored 40x30 with EXIF Orientation=6, displayed 30x40),
   `tests/Fixtures/rotated.webp` (same, as WebP with EXIF chunk), `tests/Fixtures/plain.webp` (40x30, no EXIF),
-  `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
+  `tests/Fixtures/p3.jpg` (64x48 flat rgb(100,199,80) with an embedded Display P3 profile — rgb(46,202,57) in sRGB),
+  `tests/Fixtures/srgb-tagged.jpg` (same pixels with a compact sRGB profile; both profiles CC0 from
+  Compact-ICC-Profiles), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference
 

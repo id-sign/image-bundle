@@ -78,17 +78,14 @@ class ImagickProcessor implements ImageProcessorInterface
 
             ExifOrientation::applyOrientation($imagick, $orientation);
 
+            // After the fit (small output), before the watermark (composited in sRGB) and before stripImage()
+            // drops the embedded profile. See ColorProfile for why transformImageColorspace() alone is not enough.
+            ColorProfile::normalizeToSrgb($imagick);
+
             if (null !== $watermark) {
                 $this->applyWatermark($imagick, $watermark);
             }
 
-            // Normalize to sRGB before stripping metadata. stripImage() drops the ICC profile;
-            // for non-sRGB sources (AdobeRGB, Display P3 from phones/pro cameras) this would
-            // leave pixel values reinterpreted against the default sRGB gamut, producing visibly
-            // shifted colors. transformImageColorspace() is a no-op when the image is already sRGB
-            // (the dominant case on the web), so this is cheap for the 99 % case and correct for
-            // the 1 % where it matters.
-            $imagick->transformImageColorspace(\Imagick::COLORSPACE_SRGB);
             $imagick->stripImage();
 
             $imagickFormat = self::FORMAT_MAP[$format] ?? throw new \InvalidArgumentException(\sprintf('Unsupported format: %s', $format));

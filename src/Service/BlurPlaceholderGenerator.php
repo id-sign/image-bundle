@@ -109,6 +109,9 @@ class BlurPlaceholderGenerator implements ResetInterface
             $imagick->readImage($sourcePath);
             ExifOrientation::autoRotate($imagick);
             $imagick->thumbnailImage($this->blurSize, 0);
+            // thumbnailImage() keeps the ICC profile; convert the 10 px result so the placeholder has the colours
+            // of the processed variant, then strip.
+            ColorProfile::normalizeToSrgb($imagick);
             $imagick->setImageFormat('JPEG');
             $imagick->setImageCompressionQuality($this->blurQuality);
             $imagick->stripImage();

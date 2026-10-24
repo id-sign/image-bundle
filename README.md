@@ -184,6 +184,14 @@ Output:
 <img src="/_image/icons/logo.svg" width="120" height="40" alt="Logo" decoding="async"/>
 ```
 
+### Colour profiles and metadata
+
+Every variant is written in sRGB without metadata. A source with an embedded ICC profile — Display P3 (every iPhone
+photo), Adobe RGB, a monitor profile in a screenshot, a CMYK press profile — is converted to sRGB through that profile
+before it is stripped, so the colours stay as intended; a source without a profile is taken as sRGB. EXIF orientation
+is applied before the EXIF block is dropped. The conversion runs on the resized output (about 40 ms for 800 × 600)
+and only when a variant is generated. The sRGB target is the ICC's `sRGB2014.icc`, bundled in `resources/`.
+
 ## Component attributes
 
 | Attribute        | Type          | Required | Description                                                                  |
@@ -746,6 +754,11 @@ decoded. Raise it or set it to `0` if you serve larger sources (medium-format ph
 source above `max_source_bytes` or `max_source_pixels` now answers `413` instead of a server error, and a page that
 renders it is no longer broken: it renders without `height` and blur, like for a missing source.
 
+Sources with an embedded non-sRGB ICC profile — Display P3 (every iPhone photo), Adobe RGB, CMYK — are now converted
+to sRGB before the profile is stripped. Earlier versions stripped the profile without converting, so their variants
+and blur placeholders of such sources have washed-out colours. The URLs are unchanged, so purge them:
+`image:purge <src> --force` per source, or `image:purge --force` for everything.
+
 ### Upgrading from v0.2.4 or earlier
 
 Cached dimensions (`meta.json`) and blur placeholders (`blur.txt`) now follow EXIF orientation. Entries cached by an
@@ -864,3 +877,9 @@ make cs-fix                # Run PHP CS Fixer (dry-run)
 ## License
 
 MIT
+
+`resources/sRGB2014.icc` is the International Color Consortium's sRGB profile (Copyright International Color
+Consortium, 2015), distributed under the ICC's terms: it may be copied, distributed, embedded, made, used, and sold
+without restriction; altered versions must have the original identification and copyright information removed. The
+ICC profiles embedded in the test fixtures `tests/Fixtures/p3.jpg` and `tests/Fixtures/srgb-tagged.jpg` come from
+[Compact-ICC-Profiles](https://github.com/saucecontrol/Compact-ICC-Profiles) (CC0 1.0).
