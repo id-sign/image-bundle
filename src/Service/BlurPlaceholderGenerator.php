@@ -40,7 +40,12 @@ class BlurPlaceholderGenerator implements ResetInterface
                 return $this->cache[$src] = '';
             }
 
-            $dataUri = $this->createBlurDataUri($src);
+            try {
+                $dataUri = $this->createBlurDataUri($src);
+            } catch (SourceTooLargeException) {
+                // Like a missing source: no placeholder, the image URL answers 413.
+                return $this->cache[$src] = '';
+            }
 
             // Atomic (tmp file + rename) through the storage: a concurrent reader never sees a truncated file.
             $this->cacheStorage->writeLocked($cachePath, static function (string $tmpPath) use ($dataUri): void {
@@ -91,6 +96,11 @@ class BlurPlaceholderGenerator implements ResetInterface
         $imagick = new \Imagick();
 
         try {
+            // Header only: a non-JPEG source is decoded in full below, so the pixel limit must be checked first.
+            $imagick->pingImage($sourcePath);
+            $this->sourceSizeValidator->assertPixelsFit($imagick->getImageWidth(), $imagick->getImageHeight(), $sourcePath);
+            $imagick->clear();
+
             // jpeg:size hints libjpeg to decode at roughly this target, letting it use
             // IDCT scaling (1/2, 1/4, 1/8) instead of decoding the full image. Ineffective
             // for non-JPEG inputs but harmless — Imagick silently ignores the hint.

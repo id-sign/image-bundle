@@ -38,8 +38,10 @@ class ImagickProcessor implements ImageProcessorInterface
         $imagick = new \Imagick();
 
         try {
-            // Header only (~0.04 ms): is this a JPEG that can be decoded at a fraction of its size?
+            // Header only (~0.04 ms): enforce the pixel limit before anything is decoded, and find out whether
+            // this is a JPEG that can be decoded at a fraction of its size.
             $imagick->pingImage($sourcePath);
+            $this->sourceSizeValidator->assertPixelsFit($imagick->getImageWidth(), $imagick->getImageHeight(), $sourcePath);
             $shrink = $this->shrinkOnLoad($imagick, $width, $height);
             $imagick->clear();
 

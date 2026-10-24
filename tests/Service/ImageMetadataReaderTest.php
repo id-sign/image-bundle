@@ -120,6 +120,19 @@ class ImageMetadataReaderTest extends TestCase
         self::assertSame('{"width":100,"height":75}', file_get_contents($this->cacheDir.'/test.jpg/meta.json'));
     }
 
+    public function testSourceAbovePixelLimitBehavesLikeAMissingSource(): void
+    {
+        $reader = new ImageMetadataReader(
+            new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+            new SourceSizeValidator(0, 1_000), // test.jpg is 7 500 pixels
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770),
+        );
+
+        self::assertSame(['width' => 0, 'height' => 0], $reader->getDimensions('test.jpg'));
+        self::assertNull($reader->calculateHeight('test.jpg', 800));
+        self::assertSame([], array_diff((array) scandir($this->cacheDir), ['.', '..']), 'nothing is cached on disk');
+    }
+
     public function testSourceAddedAfterMissIsReadAfterReset(): void
     {
         $sourceDir = sys_get_temp_dir().'/id_sign_image_meta_source_'.uniqid();

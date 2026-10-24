@@ -60,6 +60,14 @@ class IdSignImageExtensionTest extends TestCase
         self::assertSame([], $container->findTaggedServiceIds('id_sign_image.source'));
     }
 
+    public function testSourceLimitsDefaultTo20MiBAnd64Megapixels(): void
+    {
+        $container = $this->load([]);
+
+        self::assertSame(20_971_520, $container->getParameter('id_sign_image.max_source_bytes'));
+        self::assertSame(64_000_000, $container->getParameter('id_sign_image.max_source_pixels'));
+    }
+
     public function testConfiguredDefaultSourceReplacesBasePath(): void
     {
         $container = $this->load(['sources' => ['default' => '/srv/images']]);

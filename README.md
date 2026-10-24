@@ -97,6 +97,7 @@ id_sign_image:
     # Safety limits — protect against memory exhaustion and decompression bombs
     max_width: 4096                 # Reject component width above this (pixels)
     max_source_bytes: 20971520      # Reject source files above this (bytes). 0 disables.
+    max_source_pixels: 64000000     # Reject source images above this many pixels (width × height). 0 disables.
 
     # Permissions for created cache files and directories
     file_permissions: 0660        # null = use umask default
@@ -460,9 +461,16 @@ placed there intentionally by the administrator. If you don't want symlinks foll
 
 ### Decompression bombs
 
-`max_source_bytes` (default 20 MiB) rejects oversized source files before they reach Imagick. Also configure
-ImageMagick's `policy.xml` to restrict memory/width/height limits and disable dangerous coders (`MVG`, `MSL`, `PDF`,
-`EPHEMERAL`, `URL`). The bundle cannot substitute for a properly configured ImageMagick policy.
+`max_source_bytes` (default 20 MiB) rejects oversized source files, and `max_source_pixels` (default 64 million
+pixels, 64 MP) rejects images whose header announces more pixels than that. The byte limit alone is not enough: a
+highly compressed 100 MP JPEG is about 15 MB and a flat 30 000 × 30 000 PNG a few hundred kB, yet decoding either
+needs over a gigabyte — above ImageMagick's memory policy it falls back to a disk-backed pixel cache that takes
+seconds to minutes per variant. Both checks run before Imagick decodes anything (the pixel check reads only the
+header) and the image URL answers `413`; a page that renders such an image gets no `height` and no blur placeholder,
+like for a missing source. Raise `max_source_pixels` for medium-format photography (100 MP and more) or set it to `0`
+to disable the check. Also configure ImageMagick's `policy.xml` to restrict memory/width/height limits and disable
+dangerous coders (`MVG`, `MSL`, `PDF`, `EPHEMERAL`, `URL`). The bundle cannot substitute for a properly configured
+ImageMagick policy.
 
 ### SVG and XSS
 
@@ -661,6 +669,11 @@ and write `meta.json`/`blur.txt` atomically through it, the processor writes to 
 In controller mode the controller now checks the cache before the source, so a cache hit costs no source lookup. A
 cached variant of a deleted source is served until `cache.ttl` expires or the cache is purged — the same behaviour
 public mode has always had with `try_files`. Call `deleteBySource()` when you delete a source image.
+
+A new `max_source_pixels` limit (default 64 million pixels) rejects source images above 64 MP before they are
+decoded. Raise it or set it to `0` if you serve larger sources (medium-format photography, 200 MP phone modes). A
+source above `max_source_bytes` or `max_source_pixels` now answers `413` instead of a server error, and a page that
+renders it is no longer broken: it renders without `height` and blur, like for a missing source.
 
 ### Upgrading from v0.2.4 or earlier
 

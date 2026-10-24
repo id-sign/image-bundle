@@ -8,6 +8,7 @@ use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Service\ImageProcessorInterface;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
+use IdSign\ImageBundle\Service\SourceTooLargeException;
 use IdSign\ImageBundle\Service\UrlSigner;
 use IdSign\ImageBundle\Service\WatermarkRegistry;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
@@ -53,7 +54,12 @@ class ImageController
             }
 
             $sourceFile = $this->imageSource->getAbsolutePath($src);
-            $this->sourceSizeValidator->assertFits($sourceFile);
+
+            try {
+                $this->sourceSizeValidator->assertFits($sourceFile);
+            } catch (SourceTooLargeException) {
+                return $this->sourceTooLarge();
+            }
 
             $this->cacheStorage->writeLocked($src, static function (string $tmpPath) use ($sourceFile): void {
                 if (!copy($sourceFile, $tmpPath)) {
@@ -90,22 +96,32 @@ class ImageController
             $watermark = null !== $params['watermark'] ? $this->watermarkRegistry->get($params['watermark']) : null;
             $processor = $this->processor;
 
-            $this->cacheStorage->writeLocked($path, static function (string $tmpPath) use ($processor, $sourceFile, $params, $watermark): void {
-                $processor->process(
-                    $sourceFile,
-                    $tmpPath,
-                    $params['width'],
-                    $params['height'],
-                    $params['fit'],
-                    $params['format'],
-                    $params['quality'],
-                    $watermark,
-                    $params['lossless'],
-                );
-            });
+            try {
+                $this->cacheStorage->writeLocked($path, static function (string $tmpPath) use ($processor, $sourceFile, $params, $watermark): void {
+                    $processor->process(
+                        $sourceFile,
+                        $tmpPath,
+                        $params['width'],
+                        $params['height'],
+                        $params['fit'],
+                        $params['format'],
+                        $params['quality'],
+                        $watermark,
+                        $params['lossless'],
+                    );
+                });
+            } catch (SourceTooLargeException) {
+                // max_source_bytes / max_source_pixels; the processor checks both before decoding anything.
+                return $this->sourceTooLarge();
+            }
         }
 
         return $this->buildResponse($path);
+    }
+
+    private function sourceTooLarge(): JsonResponse
+    {
+        return new JsonResponse(['error' => 'Source image exceeds the configured size limits.'], Response::HTTP_REQUEST_ENTITY_TOO_LARGE);
     }
 
     private function buildResponse(string $cachePath): Response
