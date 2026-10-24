@@ -101,6 +101,12 @@ HMAC overhead per image lifecycle:
 - **Public mode, cache miss:** 2× (sign in component + verify in controller)
 - **Controller mode:** 2× always (sign in component + verify in controller)
 
+The payload has no format, so `UrlSigner` memoizes signatures per payload for one request (`ResetInterface`, cleared
+between requests in worker mode): one HMAC covers every `<source>` and the fallback of a width — 8 instead of 17 per
+image at `width=1920` with the default breakpoints. `CachePathResolver::encodeForUrl()` is a single `rawurlencode()`
+pass with `%2F` restored to `/`. Measured on the component: 57.7 → 46.7 μs per raster image, 53.8 → 2.6 μs per SVG
+(see the SVG note under Twig component).
+
 #### Path-based URLs
 
 URLs are path-based (not query string) so they work with web server `try_files`:
@@ -199,14 +205,22 @@ configured file permissions (needed because `tempnam()` creates files with `0600
   mode. `Imagick::destroy()` is not used (deprecated).
 - Processing writes via `CacheStorageInterface::writeLocked(cachePath, callable)` — the storage creates an intermediate
   tmp file in the TARGET directory (guaranteeing atomic intra-filesystem rename), invokes the callback with that path,
-  then atomic-renames to the final cache location. Per-variant `flock` on a sibling `.lock` file prevents thundering
-  herd when N concurrent requests race for the same uncached variant.
+  then atomic-renames to the final cache location. The lock is `flock()` on the target directory itself: no lock files
+  to leave behind or to purge, and the variants, `meta.json` and `blur.txt` of one source share one lock, so concurrent
+  generation of different variants of the same image serializes (rare — a browser requests one format and one width
+  per image). On a filesystem where `fopen()` of a directory fails (Windows) the write proceeds unlocked.
+- **Shrink-on-load for JPEG:** `ImagickProcessor` pings the source first (~0.04 ms) and, when a JPEG is at least twice
+  the output box in both dimensions, sets `jpeg:size` to exactly 2× the box (in stored orientation) so libjpeg scales
+  by 1/2, 1/4 or 1/8 during the IDCT — 24 MP → 800 px drops from ~415 ms / 210 MB to ~80 ms / 70 MB. ImageMagick
+  rounds the scale factor, so the decode is still ≥ 1.5× the box; the hint never exceeds the source (libjpeg would
+  upscale). The real, orientation-swapped source size from the ping feeds `proportionalHeight()`, so heights match
+  `ImageMetadataReader` to the pixel. Other formats have no shrink-on-load and decode fully.
 - Autorotation from EXIF orientation data via `ExifOrientation` — the single rule also used by `ImageMetadataReader`
   and `BlurPlaceholderGenerator`, so render-time dimensions and placeholders match the processed output
-- Directory creation uses race-condition-safe pattern: `!is_dir() && !mkdir() && !is_dir()`
-- File and directory permissions are configurable (`file_permissions`, `directory_permissions`). Applied via `chmod()`
-  after file creation — fixes `0600` permissions from `tempnam()`/`rename()`. Only called on cache miss, zero overhead
-  on cache hit.
+- The cache storage is the only owner of directory creation (race-condition-safe `!is_dir() && !mkdir() && !is_dir()`)
+  and of permissions (`file_permissions`, `directory_permissions`, applied via `chmod()` after the atomic rename to fix
+  the `0600` of `tempnam()`); the processor writes to the tmp path it is given and never touches either. Only on cache
+  miss, zero overhead on cache hit.
 
 #### Height semantics (Next.js-style)
 
@@ -293,7 +307,9 @@ removed for the same reason (it hid the client-side breakage).
 
 **SVG passthrough:** `.svg` files render as plain `<img src="/_image/path.svg">` — no `<picture>`, no processing, no
 srcset, no blur. SVG URLs go through `route_prefix` (not raw source path), so the file is served from cache via
-`try_files` (public mode) or controller. No HMAC signature — no parameters to vary.
+`try_files` (public mode) or controller. No HMAC signature — no parameters to vary. ux-twig-component evaluates every
+`#[ExposeInTemplate]` method eagerly, so `getSources()` and `getFallbackSrc()` return early for SVG (`$svg` is computed
+once in `postMount()`) instead of signing URLs the SVG branch of the template never reads.
 
 **I/O during render (component `mount()`):**
 
@@ -313,10 +329,12 @@ srcset, no blur. SVG URLs go through `route_prefix` (not raw source path), so th
 
 `BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). The
 source is autorotated (`ExifOrientation::autoRotate()`) before the thumbnail, so the placeholder has the displayed
-orientation. Cached
-as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`). In-memory cache per request.
-Implements `ResetInterface` for FrankenPHP. A missing source (`exists()` false) yields `''` (no placeholder) kept only
-in the in-memory cache — no `blur.txt` is written, so a source uploaded later is picked up on the next request.
+orientation. Cached as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`), written
+atomically through `CacheStorageInterface::writeLocked()` (tmp file + rename, directory and permissions handled by the
+storage) and read via `getAbsolutePath()` without the storage's TTL; an empty or corrupt `blur.txt` counts as a miss
+and is rewritten. In-memory cache per request. Implements `ResetInterface` for FrankenPHP. A missing source (`exists()`
+false) yields `''` (no placeholder) kept only in the in-memory cache — no `blur.txt` is written, so a source uploaded
+later is picked up on the next request.
 
 Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onload>`.
 
@@ -326,9 +344,11 @@ Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onl
 VP8X EXIF flag, which is read fully because ImageMagick's WebP ping skips the EXIF chunk. Dimensions are the displayed
 ones: for 90° EXIF orientations (`ExifOrientation::isQuarterTurn()`) width and height are swapped, matching
 the processor's autorotation. Cached as `meta.json` in the source image's cache directory
-(`{cache_path}/{src}/meta.json`). In-memory cache per request. Implements `ResetInterface` for FrankenPHP. A missing
-source (`exists()` false) yields `0×0` kept only in the in-memory cache — no `meta.json` is written, so a source
-uploaded later is picked up on the next request.
+(`{cache_path}/{src}/meta.json`), written atomically through `CacheStorageInterface::writeLocked()` and read without
+the storage's TTL; an empty or corrupt file (a reader that raced a non-atomic writer used to get `null` from
+`json_decode()` and a warning) counts as a miss and is rewritten. In-memory cache per request. Implements
+`ResetInterface` for FrankenPHP. A missing source (`exists()` false) yields `0×0` kept only in the in-memory cache — no
+`meta.json` is written, so a source uploaded later is picked up on the next request.
 
 Used by `auto_dimensions` and `fit="scale-down"` — with `auto_dimensions`, when only `width` is provided, height is
 calculated from the source aspect ratio; with `scale-down`, `resolveScaleDownDimensions()` decides whether the source

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Service;
 
+use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
@@ -15,11 +16,9 @@ class BlurPlaceholderGenerator implements ResetInterface
     public function __construct(
         private readonly ImageSourceInterface $imageSource,
         private readonly SourceSizeValidator $sourceSizeValidator,
-        private readonly string $cacheDirectory,
+        private readonly CacheStorageInterface $cacheStorage,
         private readonly int $blurSize,
         private readonly int $blurQuality,
-        private readonly ?int $filePermissions,
-        private readonly int $directoryPermissions,
     ) {
     }
 
@@ -32,32 +31,56 @@ class BlurPlaceholderGenerator implements ResetInterface
             return $this->cache[$src];
         }
 
-        $cachePath = $this->getCachePath($src);
+        $cachePath = $src.'/blur.txt';
+        $dataUri = $this->readCache($cachePath);
 
-        if (is_file($cachePath)) {
-            $dataUri = file_get_contents($cachePath);
-            if (false !== $dataUri) {
-                $this->cache[$src] = $dataUri;
-
-                return $dataUri;
+        if (null === $dataUri) {
+            // Not written to disk, so a source uploaded later is picked up after reset().
+            if (!$this->imageSource->exists($src)) {
+                return $this->cache[$src] = '';
             }
+
+            $dataUri = $this->createBlurDataUri($src);
+
+            // Atomic (tmp file + rename) through the storage: a concurrent reader never sees a truncated file.
+            $this->cacheStorage->writeLocked($cachePath, static function (string $tmpPath) use ($dataUri): void {
+                file_put_contents($tmpPath, $dataUri);
+            });
         }
 
-        // Not written to disk, so a source uploaded later is picked up after reset().
-        if (!$this->imageSource->exists($src)) {
-            return $this->cache[$src] = '';
-        }
-
-        $dataUri = $this->createBlurDataUri($src);
-        $this->writeCache($cachePath, $dataUri);
-        $this->cache[$src] = $dataUri;
-
-        return $dataUri;
+        return $this->cache[$src] = $dataUri;
     }
 
     public function reset(): void
     {
         $this->cache = [];
+    }
+
+    /**
+     * Read without the storage's TTL (see ImageMetadataReader::readCache()). An invalid cache path counts
+     * as a miss; an empty/corrupt file is deleted so that writeLocked() rewrites it.
+     */
+    private function readCache(string $cachePath): ?string
+    {
+        try {
+            $path = $this->cacheStorage->getAbsolutePath($cachePath);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $dataUri = (string) file_get_contents($path);
+
+        if (!str_starts_with($dataUri, 'data:image/')) {
+            $this->cacheStorage->delete($cachePath);
+
+            return null;
+        }
+
+        return $dataUri;
     }
 
     private function createBlurDataUri(string $src): string
@@ -85,25 +108,5 @@ class BlurPlaceholderGenerator implements ResetInterface
         }
 
         return 'data:image/jpeg;base64,'.base64_encode($blob);
-    }
-
-    private function getCachePath(string $src): string
-    {
-        return \sprintf('%s/%s/blur.txt', $this->cacheDirectory, $src);
-    }
-
-    private function writeCache(string $path, string $content): void
-    {
-        $dir = \dirname($path);
-
-        if (!is_dir($dir) && !mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
-            throw new \RuntimeException(\sprintf('Failed to create directory: %s', $dir));
-        }
-
-        file_put_contents($path, $content);
-
-        if (null !== $this->filePermissions) {
-            chmod($path, $this->filePermissions);
-        }
     }
 }

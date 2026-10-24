@@ -10,7 +10,8 @@ interface ImageProcessorInterface
      * Process an image: resize, apply fit mode, convert format, set quality.
      *
      * @param string      $sourcePath Absolute path to the source image
-     * @param string      $outputPath Absolute path to write the processed image
+     * @param string      $outputPath Absolute path to write the processed image; its directory must exist
+     *                                (CacheStorageInterface::writeLocked() passes a tmp path inside the target directory)
      * @param int         $width      Target width in pixels
      * @param int|null    $height     Target height in pixels (null = proportional)
      * @param string|null $fit        Fit mode: 'cover', 'contain', 'scale-down', or null

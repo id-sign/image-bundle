@@ -646,6 +646,14 @@ candidates per format; browsers on narrow viewports request them and they are ge
 other variant, so expect a small, one-off wave of cache misses. Set `device_sizes` explicitly to the previous list
 (`[640, 750, 828, 1080, 1200, 1920, 2048, 3840]`) to keep the old markup.
 
+Variant generation now locks the variant's directory instead of a `.lock` file next to each variant. `*.lock` files
+left behind by earlier versions are unused; the next `image:purge --force` removes them. Large JPEG sources are decoded
+at a reduced size when they are much larger than the output; dimensions are unchanged, so cached variants stay valid.
+
+If you construct `ImagickProcessor`, `ImageMetadataReader` or `BlurPlaceholderGenerator` yourself rather than through
+the container, their cache-directory and permission arguments are gone: the two readers take a `CacheStorageInterface`
+and write `meta.json`/`blur.txt` atomically through it, the processor writes to the path it is given.
+
 ### Upgrading from v0.2.4 or earlier
 
 Cached dimensions (`meta.json`) and blur placeholders (`blur.txt`) now follow EXIF orientation. Entries cached by an

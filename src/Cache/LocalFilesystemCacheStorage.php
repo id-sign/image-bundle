@@ -76,12 +76,12 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
         $dir = \dirname($absolutePath);
         $this->ensureDir($dir);
 
-        $lockPath = $absolutePath.'.lock';
-        $lockHandle = @fopen($lockPath, 'c');
+        // flock() on the target directory itself: no lock files to leave behind or to purge, and the
+        // variants, meta.json and blur.txt of one source share a single lock.
+        $lockHandle = @fopen($dir, 'r');
 
-        // If we can't obtain a lock handle (rare — permissions / exotic FS), fall back
-        // to unlocked write. Correctness is preserved thanks to atomic rename; we just
-        // lose thundering-herd protection in this edge case.
+        // If we can't obtain a lock handle (Windows, exotic FS), fall back to an unlocked write.
+        // Correctness is preserved thanks to atomic rename; we just lose thundering-herd protection.
         if (false === $lockHandle) {
             $this->writeViaCallback($cachePath, $writer);
 

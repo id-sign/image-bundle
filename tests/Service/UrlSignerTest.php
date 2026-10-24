@@ -25,6 +25,16 @@ class UrlSignerTest extends TestCase
         self::assertSame(16, \strlen($sig1));
     }
 
+    public function testSignaturesSurviveReset(): void
+    {
+        // sign() memoizes per payload for one request; reset() must only drop the memo, not change results.
+        $before = $this->signer->sign('uploads/photo.jpg', 800, 600, 'cover', 80);
+        $this->signer->reset();
+
+        self::assertSame($before, $this->signer->sign('uploads/photo.jpg', 800, 600, 'cover', 80));
+        self::assertTrue($this->signer->verify($before, 'uploads/photo.jpg', 800, 600, 'cover', 80));
+    }
+
     public function testDifferentParamsProduceDifferentSignatures(): void
     {
         $sig1 = $this->signer->sign('uploads/photo.jpg', 800, 600, 'cover', 80);

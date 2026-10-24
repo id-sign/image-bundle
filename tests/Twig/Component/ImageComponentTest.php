@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Tests\Twig\Component;
 
 use IdSign\ImageBundle\Cache\CachePathResolver;
+use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Service\BlurPlaceholderGenerator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
@@ -238,6 +239,21 @@ class ImageComponentTest extends TestCase
         self::assertSame(400, $component->getResolvedHeight());
     }
 
+    public function testSvgProducesNoPictureSourcesAndNoFallback(): void
+    {
+        // ux-twig-component evaluates exposed methods eagerly; the SVG template never reads these.
+        $component = $this->createComponentWithStubs();
+        $component->src = 'icons/logo.svg';
+        $component->width = 120;
+
+        $component->postMount();
+
+        self::assertTrue($component->isSvg());
+        self::assertSame([], $component->getSources());
+        self::assertSame('', $component->getFallbackSrc());
+        self::assertFalse($component->getShowBlur());
+    }
+
     public function testSvgSkipsAutoDimensions(): void
     {
         $component = $this->createComponent(globalAutoDimensions: true);
@@ -459,7 +475,7 @@ class ImageComponentTest extends TestCase
             new SrcsetGenerator($resolver, [640, 1080], '/_image'),
             $resolver,
             $this->createStub(BlurPlaceholderGenerator::class),
-            new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../../Fixtures'), new SourceSizeValidator(0), $cacheDir, null, 0o770),
+            new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../../Fixtures'), new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770)),
             80,
             ['webp'],
             '/_image',
@@ -495,8 +511,8 @@ class ImageComponentTest extends TestCase
         $component = new ImageComponent(
             new SrcsetGenerator($resolver, [640, 1080], '/_image'),
             $resolver,
-            new BlurPlaceholderGenerator($source, new SourceSizeValidator(0), $cacheDir, 10, 30, null, 0o770),
-            new ImageMetadataReader($source, new SourceSizeValidator(0), $cacheDir, null, 0o770),
+            new BlurPlaceholderGenerator($source, new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770), 10, 30),
+            new ImageMetadataReader($source, new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770)),
             80,
             ['webp'],
             '/_image',
