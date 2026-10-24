@@ -23,6 +23,8 @@ class BlurPlaceholderGeneratorTest extends TestCase
     {
         @unlink($this->cacheDir.'/rotated.jpg/blur.txt');
         @rmdir($this->cacheDir.'/rotated.jpg');
+        @unlink($this->cacheDir.'/p3.jpg/blur.txt');
+        @rmdir($this->cacheDir.'/p3.jpg');
         @rmdir($this->cacheDir);
     }
 
@@ -43,6 +45,28 @@ class BlurPlaceholderGeneratorTest extends TestCase
 
         self::assertSame(10, $imagick->getImageWidth());
         self::assertGreaterThan(10, $imagick->getImageHeight());
+    }
+
+    /**
+     * The placeholder sits under the real variant while it loads, so it needs the same colours: p3.jpg stores
+     * rgb(100,199,80) with a Display P3 profile, rgb(46,202,57) in sRGB (tolerance for the q30 JPEG).
+     */
+    public function testPlaceholderIsConvertedToSrgb(): void
+    {
+        $generator = new BlurPlaceholderGenerator(
+            new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+            new SourceSizeValidator(0),
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770),
+            10,
+            30,
+        );
+
+        $dataUri = $generator->generate('p3.jpg');
+
+        $imagick = new \Imagick();
+        $imagick->readImageBlob((string) base64_decode(substr($dataUri, \strlen('data:image/jpeg;base64,')), true));
+
+        self::assertEqualsWithDelta([46, 202, 57], $imagick->exportImagePixels(5, 3, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 8);
     }
 
     public function testEmptyBlurTxtIsTreatedAsMissAndRewritten(): void
