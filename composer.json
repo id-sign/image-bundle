@@ -13,6 +13,7 @@
         "symfony/http-foundation": "^7.4|^8.0",
         "symfony/http-kernel": "^7.4|^8.0",
         "symfony/routing": "^7.4|^8.0",
+        "symfony/service-contracts": "^3.0",
         "symfony/ux-twig-component": "^2.25|^3.0.0",
         "symfony/yaml": "^7.4|^8.0"
     },

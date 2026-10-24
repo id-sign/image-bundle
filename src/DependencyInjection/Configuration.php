@@ -10,6 +10,11 @@ use Symfony\Component\Config\Definition\ConfigurationInterface;
 
 class Configuration implements ConfigurationInterface
 {
+    /**
+     * Base path of the "default" source when the application does not configure one.
+     */
+    public const DEFAULT_SOURCE_PATH = '%kernel.project_dir%/data';
+
     public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('id_sign_image');
@@ -27,13 +32,20 @@ class Configuration implements ConfigurationInterface
                     ->info('Named image sources: name => absolute base path. Reference them as "@name/path" in src. Paths without a prefix use the "default" source (added automatically when omitted).')
                     ->useAttributeAsKey('name')
                     ->normalizeKeys(false)
-                    ->defaultValue([SourcePath::DEFAULT_SOURCE => '%kernel.project_dir%/data'])
+                    ->defaultValue([SourcePath::DEFAULT_SOURCE => self::DEFAULT_SOURCE_PATH])
                     ->scalarPrototype()
                         ->cannotBeEmpty()
+                        ->validate()
+                            // Relative paths would resolve against the current working directory, which differs
+                            // between the web server and the console.
+                            ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match('#^(/|%|[A-Za-z]:[\\\\/])#', $v))
+                            ->thenInvalid('Source paths must be absolute, e.g. "/srv/images" or "%%kernel.project_dir%%/data" (got %s).')
+                        ->end()
                     ->end()
                     ->validate()
-                        ->ifTrue(static fn (array $v): bool => [] !== preg_grep('/^[A-Za-z0-9_-]+$/', array_map('strval', array_keys($v)), \PREG_GREP_INVERT))
-                        ->thenInvalid('Source names may only contain letters, digits, "_" and "-" (got %s).')
+                        // A leading letter also rejects the integer keys of a list written where a map was expected.
+                        ->ifTrue(static fn (array $v): bool => [] !== preg_grep('/^[A-Za-z][A-Za-z0-9_-]*$/', array_map('strval', array_keys($v)), \PREG_GREP_INVERT))
+                        ->thenInvalid('Source names must start with a letter and may only contain letters, digits, "_" and "-" (got %s).')
                     ->end()
                 ->end()
                 ->arrayNode('formats')

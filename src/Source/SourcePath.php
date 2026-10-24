@@ -16,7 +16,7 @@ class SourcePath
 {
     public const DEFAULT_SOURCE = 'default';
 
-    private const DEFAULT_PREFIX = '@'.self::DEFAULT_SOURCE.'/';
+    public const DEFAULT_PREFIX = '@'.self::DEFAULT_SOURCE.'/';
 
     public static function normalize(string $src): string
     {

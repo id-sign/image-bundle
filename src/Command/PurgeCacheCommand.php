@@ -135,24 +135,8 @@ class PurgeCacheCommand extends Command
 
     private function countSourceFiles(string $path): int
     {
-        if (is_file($path)) {
-            return 1;
-        }
-
-        if (!is_dir($path)) {
-            return 0;
-        }
-
-        $count = 0;
-        $iterator = new \DirectoryIterator($path);
-
-        foreach ($iterator as $file) {
-            if (!$file->isDot() && $file->isFile()) {
-                ++$count;
-            }
-        }
-
-        return $count;
+        // Mirrors CacheStorageInterface::deleteBySource(): a single SVG file, or a whole subtree.
+        return is_file($path) ? 1 : $this->countFilesRecursive($path);
     }
 
     private function countFilesRecursive(string $dir): int

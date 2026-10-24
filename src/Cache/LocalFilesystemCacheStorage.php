@@ -184,16 +184,9 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             return 0;
         }
 
-        $count = 0;
-        $iterator = new \DirectoryIterator($path);
-
-        foreach ($iterator as $file) {
-            if (!$file->isDot() && $file->isFile()) {
-                unlink($file->getPathname());
-                ++$count;
-            }
-        }
-
+        // A variants directory, or a directory prefix such as "uploads" or "@reference" — the whole
+        // subtree goes, including the variants directories of every source image below it.
+        $count = $this->deleteContents($path);
         rmdir($path);
 
         return $count;
@@ -205,9 +198,17 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             return 0;
         }
 
+        return $this->deleteContents($this->cacheDirectory);
+    }
+
+    /**
+     * Deletes everything below $dir (not $dir itself) and returns the number of files removed.
+     */
+    private function deleteContents(string $dir): int
+    {
         $count = 0;
         $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($this->cacheDirectory, \FilesystemIterator::SKIP_DOTS),
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST,
         );
 

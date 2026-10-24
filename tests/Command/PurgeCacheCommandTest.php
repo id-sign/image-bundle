@@ -71,6 +71,23 @@ class PurgeCacheCommandTest extends TestCase
         self::assertDirectoryExists($this->cacheDir.'/uploads/photo.jpg');
     }
 
+    public function testWholeSourcePrefixIsPurgedRecursively(): void
+    {
+        $this->tester->execute(['src' => '@reference', '--force' => true]);
+
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/@reference');
+        self::assertDirectoryExists($this->cacheDir.'/uploads/photo.jpg');
+        self::assertStringContainsString('Deleted 2 cached file(s) for "@reference"', $this->tester->getDisplay());
+    }
+
+    public function testDryRunCountsWholeSourcePrefixRecursively(): void
+    {
+        $this->tester->execute(['src' => '@reference']);
+
+        self::assertDirectoryExists($this->cacheDir.'/@reference/logo.png');
+        self::assertStringContainsString('Would delete 2 cached file(s) for "@reference"', $this->tester->getDisplay());
+    }
+
     public function testDryRunCountsNormalizedSource(): void
     {
         $this->tester->execute(['src' => '@default/uploads/photo.jpg']);

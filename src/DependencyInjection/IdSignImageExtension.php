@@ -31,9 +31,6 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
         $container->setParameter('id_sign_image.device_sizes', $config['device_sizes']);
         $container->setParameter('id_sign_image.default_quality', $config['default_quality']);
 
-        /** @var array<string, string> $sources */
-        $sources = $config['sources'] + [SourcePath::DEFAULT_SOURCE => '%kernel.project_dir%/data'];
-        $container->setParameter('id_sign_image.sources', $sources);
         $container->setParameter('id_sign_image.formats', $config['formats']);
         $container->setParameter('id_sign_image.cache.ttl', $config['cache']['ttl']);
         $container->setParameter('id_sign_image.cache.path', $config['cache']['path']);
@@ -54,6 +51,8 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../../config'));
         $loader->load('services.yaml');
 
+        /** @var array<string, string> $sources */
+        $sources = $config['sources'] + [SourcePath::DEFAULT_SOURCE => Configuration::DEFAULT_SOURCE_PATH];
         $this->registerSources($container, $sources);
     }
 
