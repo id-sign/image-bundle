@@ -42,6 +42,7 @@ src/
 │   ├── ImagickProcessor.php
 │   ├── ExifOrientation.php
 │   ├── ColorProfile.php
+│   ├── ExifInteroperability.php
 │   ├── FormatNegotiator.php
 │   ├── SrcsetGenerator.php
 │   ├── BlurPlaceholderGenerator.php
@@ -74,7 +75,8 @@ config/
 └── routes.yaml
 
 resources/
-└── sRGB2014.icc
+├── sRGB2014.icc
+└── AdobeCompat-v2.icc
 ```
 
 ### Key design decisions
@@ -254,8 +256,17 @@ Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box thro
   a warning through the optional `?LoggerInterface` of the processor and the blur generator and stripped without
   conversion; the wrong-coloured variant is cached, so the log line is the only trace. `applyWatermark()` converts
   the watermark the same way before compositing. `IdSignImageExtension::load()` refuses to build the container when
-  `resources/sRGB2014.icc` is unreadable (a package shipped without `resources/`), instead of a 500 at the first
-  cache miss on a profiled source.
+  `resources/sRGB2014.icc` or `AdobeCompat-v2.icc` is unreadable (a package shipped without `resources/`), instead
+  of a 500 at the first cache miss on a profiled source.
+- **Adobe RGB without a profile:** DCF cameras set to Adobe RGB embed no ICC profile and write EXIF
+  `ColorSpace = Uncalibrated` + `InteroperabilityIndex = "R03"` instead. `ColorProfile::tagFromExif()` attaches
+  `resources/AdobeCompat-v2.icc` (CC0, converts identically to Adobe's profile) when an image has no ICC profile and
+  that tag, so `normalizeToSrgb()` converts it like a profiled source. It runs right after `readImage()` in the
+  processor and the blur generator: `thumbnailImage()`/`cropThumbnailImage()` drop the EXIF block (they keep ICC).
+  `ExifInteroperability::index()` reads the tag from the raw EXIF profile (IFD0 → Exif IFD → Interoperability IFD),
+  because ImageMagick 7.1 exposes that IFD only as `exif:Thumbnail.InteroperabilityIndex` and 6.9 not at all. Cost
+  5–30 µs per profile-less source (EXIF size), 1 µs with a profile; `Uncalibrated` alone means nothing (Photoshop exports and iPhones set it too). Not handled:
+  PNG `cHRM`/`gAMA` without `iCCP` (1 of 1 023 real PNGs had non-sRGB primaries), AVIF/HEIC with `nclx` only.
 - **Source limits:** `SourceSizeValidator::assertFits()` checks `max_source_bytes`, `assertPixelsFit()` checks
   `max_source_pixels` (default 64 MP) against width × height from the `pingImage()` the processor, the metadata reader
   and the blur generator do before decoding — the blur generator pings for this reason alone, since a non-JPEG source
@@ -514,7 +525,8 @@ the sole author.
 
 ### PHPUnit
 
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `SourceSizeValidator`, `ColorProfile`, `LocalFilesystemSource`,
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `SourceSizeValidator`, `ColorProfile`,
+  `ExifInteroperability`, `LocalFilesystemSource`,
   `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
   `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
@@ -533,7 +545,8 @@ the sole author.
   `tests/Fixtures/rotated.webp` (same, as WebP with EXIF chunk), `tests/Fixtures/plain.webp` (40x30, no EXIF),
   `tests/Fixtures/p3.jpg` (64x48 flat rgb(100,199,80) with an embedded Display P3 profile — rgb(46,202,57) in sRGB),
   `tests/Fixtures/srgb-tagged.jpg` (same pixels with a compact sRGB profile; both profiles CC0 from
-  Compact-ICC-Profiles), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
+  Compact-ICC-Profiles), `tests/Fixtures/adobergb-r03.jpg` (same pixels, no profile, EXIF `InteropIndex=R03` written
+  with exiftool — rgb(0,200,67) in sRGB), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference
 
