@@ -1,6 +1,6 @@
 ---
 name: image-bundle
-description: Automatic image optimization for Symfony — responsive images, format conversion (AVIF/WebP), blur placeholders, watermarks, and caching. Use when optimizing images for web performance, generating responsive pictures, adding watermarks, or configuring image serve modes and cache in a Symfony project using ImageBundle.
+description: Automatic image optimization for Symfony — responsive images, format conversion (AVIF/WebP), blur placeholders, watermarks, named image sources, and caching. Use when optimizing images for web performance, generating responsive pictures, adding watermarks, or configuring image serve modes and cache in a Symfony project using ImageBundle.
 ---
 
 # ImageBundle
@@ -30,7 +30,7 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 
 | Prop             | Type          | Required | Description                                                                                    |
 |------------------|---------------|----------|------------------------------------------------------------------------------------------------|
-| `src`            | string        | yes      | Path relative to source directory                                                              |
+| `src`            | string        | yes      | Path relative to the `default` source; `@name/path` reads from a named source (see below)      |
 | `width`          | int           | yes      | Intrinsic image width in px (not display size) — see "Picking width" below                     |
 | `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set             |
 | `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` — required for `height` to affect processing |
@@ -53,7 +53,7 @@ Pick a value that matches the largest pixel size the image will ever render at.
 Watch out for:
 
 - **`width` smaller than smallest `device_sizes` entry → no responsive srcset.** `SrcsetGenerator` only emits
-  breakpoints ≤ `width`. Default smallest breakpoint is 640, so `width=500` produces a single-candidate srcset. On
+  breakpoints ≤ `width`. Default smallest breakpoint is 320, so `width=300` produces a single-candidate srcset. On
   wide viewports the image gets stretched and looks blurry.
 
 How to pick:
@@ -129,8 +129,11 @@ SVG files render as plain `<img>` — no processing, no `<picture>`. Served via 
 ```yaml
 # config/packages/id_sign_image.yaml
 id_sign_image:
-    device_sizes: [ 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
+    device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
+    sources:                        # name => absolute path; "@name/path" in src, no prefix = default
+        default: '%kernel.project_dir%/data'
+        reference: '%kernel.project_dir%/assets/reference'
     formats: [ 'avif', 'webp' ]
     cache:
         ttl: 2592000
@@ -151,24 +154,49 @@ id_sign_image:
     lossless: false                 # true lossless encoding (webp/avif only, ignored for jpeg/png)
     max_width: 4096                 # reject component width above this
     max_source_bytes: 20971520      # 20 MiB; 0 disables the check
+    max_source_pixels: 64000000     # 64 MP (width × height from the header); 0 disables the check
     file_permissions: 0660          # permissions for cache files (null = umask default)
     directory_permissions: 0770     # permissions for cache directories
     serve_mode: 'public'
     route_prefix: '/_image'
 ```
 
-### Image source
+### Image sources
 
-Default source directory: `%kernel.project_dir%/data`. Override:
+Sources are named. `src` without a prefix reads from the `default` source (`%kernel.project_dir%/data` unless
+configured); `@name/path` reads from the source `name`:
 
 ```yaml
-# config/services.yaml
-IdSign\ImageBundle\Source\LocalFilesystemSource:
-    arguments:
-        $basePath: '%kernel.project_dir%/public/uploads'
+# config/packages/id_sign_image.yaml
+id_sign_image:
+    sources:
+        default: '%kernel.project_dir%/public/uploads'
+        reference: '%kernel.project_dir%/assets/reference'
 ```
 
-Custom source (S3, Flysystem): implement `ImageSourceInterface` and register as alias.
+```twig
+<twig:Image src="uploads/photo.jpg" width="800" alt="From the default source" />
+<twig:Image src="@reference/screenshot.png" width="1200" alt="From the reference source" />
+{{ image_url('@reference/screenshot.png', 1200, format='webp') }}
+```
+
+Rules:
+
+- Names start with a letter, may contain letters, digits, `_` and `-`, and are case-sensitive. Paths must be absolute
+  (a `%parameter%` counts).
+- The prefix stays in the URL (`/_image/%40reference/…`), in the HMAC signature and in the cache directory
+  (`public/_image/@reference/screenshot.png/`), so `@reference/logo.png` and `logo.png` never share a cache entry.
+  `@default/photo.jpg` is normalized to `photo.jpg`.
+- An unknown source name behaves like a missing file: the page renders without `height`/blur, the image URL returns 404.
+- A leading `@` in `src` is reserved. A directory of the default source whose name starts with `@` must be renamed or
+  registered as a source of that name (`sources: { scope: '%kernel.project_dir%/data/@scope' }` keeps URLs and cache
+  entries valid).
+- Every configured source is a public asset tree — see Security model.
+
+Custom source (S3, Flysystem): implement `ImageSourceInterface` and tag the service with `id_sign_image.source` and a
+`name` (`#[AutoconfigureTag('id_sign_image.source', ['name' => 'reference'])]`). A custom **default** source re-points
+the `id_sign_image.source.default` alias. The pre-0.4 override of the `$basePath` argument of `LocalFilesystemSource`
+still works and takes precedence over `sources.default`.
 
 ### Routes
 
@@ -186,7 +214,13 @@ id_sign_image:
 location /_image/ { try_files $uri @symfony; }
 ```
 
-**Controller:** Every request through PHP. Enables TTL-based invalidation and access control.
+**Controller:** Every request through PHP. Enables TTL-based invalidation and access control. Works with
+`X-Accel-Redirect`/`X-Sendfile` out of the box: set `framework.trust_x_sendfile_type_header` and the web server mapping
+(README has nginx, FrankenPHP and Apache configs) — PHP then sends only headers and the web server streams the file.
+
+In both modes a cached variant is served without consulting the source, so deleting a source file does not remove its
+variants. Call `deleteBySource()` or `image:purge <src> --force` when a source is deleted; in controller mode the
+variants also expire with `cache.ttl`.
 
 ## URL security
 
@@ -196,12 +230,20 @@ URL format: `/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile
 
 ## Security model
 
-Source directory (default `%kernel.project_dir%/data`) is treated as **publicly accessible**. Any file under it is
-readable by anyone who knows (or guesses) the path. For access control, use `serve_mode: controller` + Symfony firewall
-in front of the bundle route; `try_files` in public mode bypasses Symfony security.
+Every configured source directory (`sources`, default `%kernel.project_dir%/data`) is treated as **publicly
+accessible**. Any file under any of them is readable by anyone who knows (or guesses) the path — adding a directory to
+`sources` publishes it. For access control, use `serve_mode: controller` + Symfony firewall in front of the bundle
+route; `try_files` in public mode bypasses Symfony security.
 
-Path segments `..` and empty are rejected; symlinks inside the source tree ARE followed (admin's decision). Audit
+Path segments `..`, `.` and empty are rejected; symlinks inside the source tree ARE followed (admin's decision). Audit
 `find data/ -type l` if you don't want that.
+
+### Decompression bombs
+
+`max_source_bytes` (default 20 MiB) and `max_source_pixels` (default 64 MP, width × height read from the header) reject
+oversized sources before Imagick decodes anything. The image URL answers `413`; a page rendering such an image gets no
+`height` and no blur placeholder, like for a missing source. Raise `max_source_pixels` (or set `0`) for medium-format
+photography. Still configure ImageMagick's `policy.xml` — the bundle is not a substitute for it.
 
 ### SVG XSS in public mode
 
@@ -236,6 +278,9 @@ ignored for JPEG (no lossless) and PNG (already lossless).
 php bin/console image:purge                                    # dry-run preview
 php bin/console image:purge --force                            # purge all
 php bin/console image:purge uploads/photo.jpg --force          # purge specific image
+php bin/console image:purge @reference/logo.png --force        # image from a named source
+php bin/console image:purge uploads/2024 --force               # everything below a directory prefix
+php bin/console image:purge @reference --force                 # whole named source
 php bin/console image:purge --modified-before=30 --force       # older than 30 days
 php bin/console image:purge --accessed-before=14 --force       # not accessed in 14 days
 ```
@@ -269,6 +314,10 @@ $url = $imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 
 
 ```php
 // Inject CacheStorageInterface, then:
-$cacheStorage->deleteBySource('uploads/photo.jpg'); // deletes all raster variants
-$cacheStorage->deleteBySource('icons/logo.svg');    // deletes cached SVG file
+$cacheStorage->deleteBySource('uploads/photo.jpg');   // all variants + meta.json/blur.txt
+$cacheStorage->deleteBySource('icons/logo.svg');      // cached SVG file
+$cacheStorage->deleteBySource('@reference/logo.png'); // image from a named source
+$cacheStorage->deleteBySource('uploads/2024');        // everything below a directory prefix
 ```
+
+Call it whenever a source image is replaced or deleted — cached variants are served without consulting the source.

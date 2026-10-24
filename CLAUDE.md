@@ -457,6 +457,13 @@ No HMAC, no Imagick processing.
 - No mutable static state anywhere
 - File handles closed explicitly
 
+## Documentation
+
+User-facing changes — props, configuration, console commands, URL format, serve-mode behaviour — are documented in
+three places that must stay in sync: `README.md` (full reference), this file (design rationale) and
+`.claude/skills/image-bundle.md`, a Claude Code skill shipped with the bundle for applications that use it (a condensed
+README: component, config, sources, serve modes, security, purge). Update the skill together with the README.
+
 ## Code quality
 
 **IMPORTANT:** Before every commit, all three checks must pass — PHP CS Fixer, PHPStan, and PHPUnit. These are enforced
