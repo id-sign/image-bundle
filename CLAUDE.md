@@ -178,8 +178,8 @@ default. `IdSignImageExtension` sets `$basePath` of the `LocalFilesystemSource` 
 (`services.yaml` declares the service without arguments; an application-level override of that definition still wins,
 as before 0.4) and registers every other source as `id_sign_image.source.{name}` (`LocalFilesystemSource`) tagged
 `id_sign_image.source`. Custom implementations plug in through the same tag; a custom default re-points the
-`id_sign_image.source.default` alias. Path-segment validation (`..`, `.`, empty) lives in each `LocalFilesystemSource`
-and in the cache storage, so it applies inside every source; `NamedImageSource` additionally refuses `@name/` and
+`id_sign_image.source.default` alias. Path-segment validation (`..`, `.`, empty, and `\` — Windows takes it as a
+separator) lives in each `LocalFilesystemSource` and in the cache storage, so it applies inside every source; `NamedImageSource` additionally refuses `@name/` and
 `@name//x` — the inner source would trim the slash and report a file the cache layer rejects, and the controller would
 answer 500 instead of 404. `$default` in `NamedImageSource` must stay explicitly bound in `services.yaml` — autowiring
 by type would resolve to the interface alias, i.e. to the composite itself.
@@ -221,9 +221,11 @@ Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box thro
 - Processing writes via `CacheStorageInterface::writeLocked(cachePath, callable)` — the storage creates an intermediate
   tmp file in the TARGET directory (guaranteeing atomic intra-filesystem rename), invokes the callback with that path,
   then atomic-renames to the final cache location. The lock is `flock()` on the target directory itself: no lock files
-  to leave behind or to purge, and the variants, `meta.json` and `blur.txt` of one source share one lock, so concurrent
-  generation of different variants of the same image serializes (rare — a browser requests one format and one width
-  per image). On a filesystem where `fopen()` of a directory fails (Windows) the write proceeds unlocked.
+  to leave behind or to purge, and the variants of one source share one lock, so concurrent generation of different
+  variants of the same image serializes (rare — a browser requests one format and one width per image). On a
+  filesystem where `fopen()` of a directory fails (Windows) the write proceeds unlocked. `meta.json` and `blur.txt` go
+  through the lock-free `write()` instead (staged next to the target, then `rename()` — atomic all the same): the lock
+  is held for the whole encode of a variant, and a page render must never wait for that.
 - **Shrink-on-load for JPEG:** `ImagickProcessor` pings the source first (~0.04 ms) and, when a JPEG is at least twice
   the output box in both dimensions, sets `jpeg:size` to exactly 2× the box (in stored orientation) so libjpeg scales
   by 1/2, 1/4 or 1/8 during the IDCT — 24 MP → 800 px drops from ~415 ms / 210 MB to ~80 ms / 70 MB. ImageMagick
@@ -267,10 +269,13 @@ Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box thro
   because ImageMagick 7.1 exposes that IFD only as `exif:Thumbnail.InteroperabilityIndex` and 6.9 not at all. Cost
   5–30 µs per profile-less source (EXIF size), 1 µs with a profile; `Uncalibrated` alone means nothing (Photoshop exports and iPhones set it too). Not handled:
   PNG `cHRM`/`gAMA` without `iCCP` (1 of 1 023 real PNGs had non-sRGB primaries), AVIF/HEIC with `nclx` only.
-- **Source limits:** `SourceSizeValidator::assertFits()` checks `max_source_bytes`, `assertPixelsFit()` checks
-  `max_source_pixels` (default 64 MP) against width × height from the `pingImage()` the processor, the metadata reader
-  and the blur generator do before decoding — the blur generator pings for this reason alone, since a non-JPEG source
-  would otherwise be decoded in full at render time. The byte limit alone lets a ~15 MB 100 MP JPEG or a flat
+- **Source limits:** `SourceSizeValidator::assertFits()` checks `max_source_bytes`, `assertPingedFits()` checks
+  `max_source_pixels` (default 64 MP) against the pixels of **every frame** of the `pingImage()` the processor, the
+  metadata reader and the blur generator do before decoding — the blur generator pings for this reason alone, since a
+  non-JPEG source would otherwise be decoded in full at render time. `pingImage()` leaves the iterator on the last
+  frame, so checking the current frame let a GIF with a 1×1 last frame through while `readImage()` decoded all of them
+  (25 kB → 500 MB); the three readers also read `path[0]`, the first frame only (brackets in file names are fine, IM
+  resolves the literal name first). The byte limit alone lets a ~15 MB 100 MP JPEG or a flat
   30000×30000 PNG through, and above ImageMagick's memory policy the decode falls back to a disk-backed pixel cache
   that takes seconds to minutes while holding the directory lock. Both throw `SourceTooLargeException`
   (`RuntimeException`): the controller answers 413 without caching, the two render-time readers treat the source like
@@ -390,9 +395,10 @@ once in `postMount()`) instead of signing URLs the SVG branch of the template ne
 `BlurPlaceholderGenerator` creates a 10px-wide JPEG thumbnail, base64-encodes it as a data URI (~300-600 bytes). The
 source is autorotated (`ExifOrientation::autoRotate()`) before the thumbnail, so the placeholder has the displayed
 orientation, and the 10 px result is converted to sRGB through its ICC profile (`ColorProfile::normalizeToSrgb()`),
-so it has the colours of the variant. Cached as `blur.txt` in the source image's cache directory (`{cache_path}/{src}/blur.txt`), written
-atomically through `CacheStorageInterface::writeLocked()` (tmp file + rename, directory and permissions handled by the
-storage) and read via `getAbsolutePath()` without the storage's TTL; an empty or corrupt `blur.txt` counts as a miss
+so it has the colours of the variant. Cached as `blur.txt` in the source image's cache directory
+(`{cache_path}/{src}/blur.txt`), written atomically through `CacheStorageInterface::write()` (temp file + rename,
+directory and permissions handled by the storage, no directory lock) and read via `getAbsolutePath()` without the
+storage's TTL; an empty or corrupt `blur.txt` counts as a miss
 and is rewritten. In-memory cache per request. Implements `ResetInterface` for FrankenPHP. A missing source (`exists()`
 false) yields `''` (no placeholder) kept only in the in-memory cache — no `blur.txt` is written, so a source uploaded
 later is picked up on the next request.
@@ -405,8 +411,8 @@ Rendered via CSS `background-image` + `filter: blur(20px)`, removed on `<img onl
 VP8X EXIF flag, which is read fully because ImageMagick's WebP ping skips the EXIF chunk. Dimensions are the displayed
 ones: for 90° EXIF orientations (`ExifOrientation::isQuarterTurn()`) width and height are swapped, matching
 the processor's autorotation. Cached as `meta.json` in the source image's cache directory
-(`{cache_path}/{src}/meta.json`), written atomically through `CacheStorageInterface::writeLocked()` and read without
-the storage's TTL; an empty or corrupt file (a reader that raced a non-atomic writer used to get `null` from
+(`{cache_path}/{src}/meta.json`), written atomically through `CacheStorageInterface::write()` (a temp file moved next
+to the target and renamed; no directory lock, see Image processing) and read without the storage's TTL; an empty or corrupt file (a reader that raced a non-atomic writer used to get `null` from
 `json_decode()` and a warning) counts as a miss and is rewritten. In-memory cache per request. Implements
 `ResetInterface` for FrankenPHP. A missing source (`exists()` false) yields `0×0` kept only in the in-memory cache — no
 `meta.json` is written, so a source uploaded later is picked up on the next request.
@@ -436,6 +442,9 @@ both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 
 Used for API responses, emails, or any context outside Twig templates. Unlike `<twig:Image>` and `image_url()`, it
 does not replace a `scale-down` width/height with the source dimensions, so its URL can be a separate cache variant.
+For an `.svg` source (`SourcePath::isSvg()`, the one rule shared with the component, `image_url()` and the controller)
+it returns the passthrough URL — a signed raster URL would make the controller rasterize an untrusted SVG and its
+variants directory would collide with the passthrough cache file.
 
 ### Twig function `image_url()`
 
@@ -472,21 +481,28 @@ the largest entry. Default `sizes` attribute: `100vw`.
 1. `CacheStorageInterface::has()` — cache check → hit is served without touching the source
 2. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing
 3. `SourceSizeValidator::assertFits()` (`max_source_bytes`) → 413; copy source to temp file → `writeLocked()` to cache
-4. `BinaryFileResponse` with immutable cache headers
+4. `BinaryFileResponse` with `Content-Type: image/svg+xml` and immutable cache headers
 
-No HMAC, no Imagick processing.
+No HMAC, no Imagick processing. Security headers for SVG (`nosniff`, CSP `sandbox`) are the web server's job in both
+modes; the controller sets the type explicitly so nothing is sniffed from the content.
 
 **Raster flow:**
 
-1. `CachePathResolver::parse($path)` — extract parameters from URL
-2. `UrlSigner::verify()` — HMAC check → 403 if invalid
-3. `CacheStorageInterface::has()` — cache check (includes TTL in controller mode) → hit is served without touching
-   the source
-4. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing (unknown `@source/` name included)
-5. `WatermarkRegistry::has()` — watermark profile check → 400 if unknown profile
-6. Process via `ImagickProcessor` to temp file → `writeLocked()` to cache; `SourceTooLargeException`
-   (`max_source_bytes` before the read, `max_source_pixels` from the header ping) → 413, nothing cached
-7. `BinaryFileResponse` with `Cache-Control: public, max-age=31536000, immutable`
+1. `CachePathResolver::parse($path)` — extract parameters from URL → 400 (`jpg` is not an accepted extension, the
+   bundle generates `jpeg`)
+2. `SourcePath::isSvg(src)` → 404 (SVG is served as-is, never rasterized); `FormatNegotiator::isOffered()` → 404
+   unless the format is one of the configured `formats` or the source's fallback — the signature does not cover the
+   format, so one signed URL would otherwise yield a variant per accepted extension (PNG is lossless: 20–30 MB for a
+   3840 px photo)
+3. `UrlSigner::verify()` — HMAC check → 403 if invalid
+4. `CacheStorageInterface::has()` — cache check (includes TTL in controller mode) → hit is served without touching
+   the source (so per-image authorization belongs in front of the route, not in a custom source's `exists()`)
+5. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing (unknown `@source/` name included)
+6. `WatermarkRegistry::has()` — watermark profile check → 400 if unknown profile
+7. Process via `ImagickProcessor` to temp file → `writeLocked()` to cache; `SourceTooLargeException`
+   (`max_source_bytes` before the read, `max_source_pixels` from the header ping, all frames) → 413, nothing cached
+8. `BinaryFileResponse` with an explicit `Content-Type` (`FormatNegotiator::getMimeType()`; guessing would need
+   `symfony/mime`, which the bundle does not require) and `Cache-Control: public, max-age=31536000, immutable`
 
 ### FrankenPHP / worker mode
 

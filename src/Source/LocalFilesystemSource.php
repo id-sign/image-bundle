@@ -22,9 +22,10 @@ class LocalFilesystemSource implements ImageSourceInterface
 
     public function getAbsolutePath(string $path): string
     {
+        // "\" too: Windows (a supported host) takes it as a separator, so "..\" would walk out of the base path.
         foreach (explode('/', trim($path, '/')) as $segment) {
-            if ('' === $segment || '.' === $segment || '..' === $segment) {
-                throw new \InvalidArgumentException(\sprintf('Invalid path segment (empty, "." or "..") in: %s', $path));
+            if ('' === $segment || '.' === $segment || '..' === $segment || str_contains($segment, '\\')) {
+                throw new \InvalidArgumentException(\sprintf('Invalid path segment (empty, ".", ".." or containing "\\") in: %s', $path));
             }
         }
 

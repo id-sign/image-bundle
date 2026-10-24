@@ -7,6 +7,7 @@ namespace IdSign\ImageBundle\Tests\Controller;
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Controller\ImageController;
+use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImagickProcessor;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\UrlSigner;
@@ -44,6 +45,7 @@ class ImageControllerTest extends TestCase
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             new WatermarkRegistry([]),
             $sizeValidator,
+            new FormatNegotiator(['avif', 'webp']),
         );
     }
 
@@ -157,6 +159,69 @@ class ImageControllerTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
     }
 
+    /**
+     * The signature does not cover the format: without this check one signed URL would yield a variant per accepted
+     * extension, and PNG is lossless (20–30 MB for a 3840 px photo).
+     */
+    public function testFormatNeitherConfiguredNorTheSourceFallbackReturns404WithoutCaching(): void
+    {
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'png');
+
+        $response = ($this->controller)(Request::create('/_image/'.$path), $path);
+
+        self::assertSame(404, $response->getStatusCode());
+        self::assertFileDoesNotExist($this->cacheDir.'/'.$path);
+    }
+
+    public function testJpgExtensionIsNotAnAcceptedVariantPath(): void
+    {
+        // The bundle generates ".jpeg"; ".jpg" would be a second file with the same content.
+        $path = str_replace('.jpeg', '.jpg', $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'jpeg'));
+
+        $response = ($this->controller)(Request::create('/_image/'.$path), $path);
+
+        self::assertSame(400, $response->getStatusCode());
+    }
+
+    public function testResponsesCarryAnExplicitContentType(): void
+    {
+        // Guessing (BinaryFileResponse::prepare() → File::getMimeType()) needs symfony/mime, which the bundle does not
+        // require, and sniffs the content — an SVG starting like HTML would go out as text/html.
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+        self::assertSame('image/webp', ($this->controller)(Request::create('/_image/'.$path), $path)->headers->get('Content-Type'));
+
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'jpeg');
+        self::assertSame('image/jpeg', ($this->controller)(Request::create('/_image/'.$path), $path)->headers->get('Content-Type'));
+
+        self::assertSame('image/svg+xml', ($this->controller)(Request::create('/_image/logo.svg'), 'logo.svg')->headers->get('Content-Type'));
+    }
+
+    /**
+     * Nothing generates a signed raster URL for an SVG (ImageUrlGenerator returns the passthrough URL); a hand-made one
+     * must not reach ImageMagick's rasterizer nor create a variants directory where the passthrough file lives.
+     */
+    public function testSignedRasterUrlForAnSvgSourceReturns404WithoutCaching(): void
+    {
+        $path = $this->cachePathResolver->resolve('logo.svg', 64, null, null, 80, 'webp');
+
+        $response = ($this->controller)(Request::create('/_image/'.$path), $path);
+
+        self::assertSame(404, $response->getStatusCode());
+        self::assertFileDoesNotExist($this->cacheDir.'/logo.svg');
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/logo.svg');
+    }
+
+    public function testBackslashSegmentsReturn404(): void
+    {
+        // Windows takes "\" as a separator: "..\" walks out of the directory while no segment equals "..".
+        // Request::create() refuses a raw backslash in the URI; the router hands the controller the decoded %5C.
+        $svgPath = '..\\..\\Fixtures\\logo.svg';
+        self::assertSame(404, ($this->controller)(Request::create('/_image/'.str_replace('\\', '%5C', $svgPath)), $svgPath)->getStatusCode());
+
+        $rasterPath = $this->cachePathResolver->resolve('..\\Fixtures\\test.jpg', 64, null, null, 80, 'webp');
+        self::assertSame(404, ($this->controller)(Request::create('/_image/'.str_replace('\\', '%5C', $rasterPath)), $rasterPath)->getStatusCode());
+    }
+
     public function testWebpFormatWorks(): void
     {
         $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
@@ -226,6 +291,7 @@ class ImageControllerTest extends TestCase
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             $registry,
             $sizeValidator,
+            new FormatNegotiator(['avif', 'webp']),
         );
 
         $path = $resolver->resolve('test.jpg', 64, 48, 'cover', 80, 'jpeg', 'test');
@@ -347,6 +413,7 @@ class ImageControllerTest extends TestCase
             ),
             new WatermarkRegistry([]),
             $sizeValidator,
+            new FormatNegotiator(['avif', 'webp']),
         );
 
         return [$controller, $referenceDir];

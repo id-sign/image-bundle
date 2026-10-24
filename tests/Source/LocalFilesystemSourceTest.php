@@ -47,6 +47,14 @@ class LocalFilesystemSourceTest extends TestCase
         $this->source->getAbsolutePath('photos/../../README.md');
     }
 
+    public function testGetAbsolutePathRejectsBackslashInSegment(): void
+    {
+        // Windows (a supported host) takes "\" as a separator too: no segment here is "..", yet the path walks out.
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->getAbsolutePath('photos\\..\\..\\README.md');
+    }
+
     public function testGetAbsolutePathRejectsDotSegment(): void
     {
         $this->expectException(\InvalidArgumentException::class);

@@ -50,4 +50,37 @@ class SourceSizeValidator
             throw SourceTooLargeException::forPixels($width, $height, $this->maxPixels, $absolutePath);
         }
     }
+
+    /**
+     * The pixel limit for a pinged image, every frame counted. pingImage() leaves the iterator on the LAST frame, so
+     * checking the current frame would let a GIF, APNG, animated WebP or multi-page TIFF with a 1×1 last frame
+     * through while readImage() decodes all of them (25 kB of GIF → 500 MB). Leaves the iterator on the first frame,
+     * the one the callers read.
+     *
+     * @throws SourceTooLargeException when the frames together exceed the configured pixel limit
+     */
+    public function assertPingedFits(\Imagick $pinged, string $absolutePath): void
+    {
+        $pinged->setFirstIterator();
+
+        if (0 === $this->maxPixels) {
+            return;
+        }
+
+        $pixels = 0;
+        $frames = 0;
+
+        do {
+            $pixels += $pinged->getImageWidth() * $pinged->getImageHeight();
+            ++$frames;
+        } while ($pinged->nextImage());
+
+        $pinged->setFirstIterator();
+
+        if ($pixels <= $this->maxPixels) {
+            return;
+        }
+
+        throw 1 === $frames ? SourceTooLargeException::forPixels($pinged->getImageWidth(), $pinged->getImageHeight(), $this->maxPixels, $absolutePath) : SourceTooLargeException::forFrames($frames, $pixels, $this->maxPixels, $absolutePath);
+    }
 }

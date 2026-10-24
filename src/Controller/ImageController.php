@@ -6,12 +6,14 @@ namespace IdSign\ImageBundle\Controller;
 
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
+use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImageProcessorInterface;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\SourceTooLargeException;
 use IdSign\ImageBundle\Service\UrlSigner;
 use IdSign\ImageBundle\Service\WatermarkRegistry;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -28,12 +30,13 @@ class ImageController
         private readonly ImageSourceInterface $imageSource,
         private readonly WatermarkRegistry $watermarkRegistry,
         private readonly SourceSizeValidator $sourceSizeValidator,
+        private readonly FormatNegotiator $formatNegotiator,
     ) {
     }
 
     public function __invoke(Request $request, string $path): Response
     {
-        if ('svg' === strtolower(pathinfo($path, \PATHINFO_EXTENSION))) {
+        if (SourcePath::isSvg($path)) {
             return $this->serveSvg($path);
         }
 
@@ -68,7 +71,7 @@ class ImageController
             });
         }
 
-        return $this->buildResponse($src);
+        return $this->buildResponse($src, 'image/svg+xml');
     }
 
     private function serveRaster(string $path): Response
@@ -76,6 +79,13 @@ class ImageController
         $params = $this->cachePathResolver->parse($path);
         if (null === $params) {
             return new JsonResponse(['error' => 'Invalid image path.'], Response::HTTP_BAD_REQUEST);
+        }
+
+        // An SVG is served as-is (serveSvg()); nothing produces a signed raster URL for one (ImageUrlGenerator), and
+        // processing it would hand an untrusted SVG to ImageMagick's rasterizer.
+        // The signature does not cover the format: only the formats the application would link to are generated.
+        if (SourcePath::isSvg($params['src']) || !$this->formatNegotiator->isOffered($params['format'], $params['src'])) {
+            return new JsonResponse(['error' => 'Variant not available.'], Response::HTTP_NOT_FOUND);
         }
 
         if (!$this->urlSigner->verify($params['signature'], $params['src'], $params['width'], $params['height'], $params['fit'], $params['quality'], $params['watermark'], $params['lossless'])) {
@@ -116,7 +126,7 @@ class ImageController
             }
         }
 
-        return $this->buildResponse($path);
+        return $this->buildResponse($path, FormatNegotiator::getMimeType($params['format']));
     }
 
     private function sourceTooLarge(): JsonResponse
@@ -124,9 +134,13 @@ class ImageController
         return new JsonResponse(['error' => 'Source image exceeds the configured size limits.'], Response::HTTP_REQUEST_ENTITY_TOO_LARGE);
     }
 
-    private function buildResponse(string $cachePath): Response
+    private function buildResponse(string $cachePath, string $mimeType): Response
     {
         $response = new BinaryFileResponse($this->cacheStorage->getAbsolutePath($cachePath));
+        // Explicit: the format is known, and guessing (BinaryFileResponse::prepare() → File::getMimeType()) needs
+        // symfony/mime, which the bundle does not require, and sniffs the content — an SVG that starts like HTML
+        // would be sent as text/html.
+        $response->headers->set('Content-Type', $mimeType);
         $response->headers->set('Cache-Control', 'public, max-age=31536000, immutable');
         $response->setContentDisposition(ResponseHeaderBag::DISPOSITION_INLINE);
 
