@@ -91,6 +91,19 @@ class ImageControllerTest extends TestCase
         self::assertSame(400, $response->getStatusCode());
     }
 
+    public function testSignedUrlWithTrailingNewlineReturns400(): void
+    {
+        // The route requirement ".+" lets "%0A" through; without the D modifier in parse() the request
+        // would verify like the original URL and write a second variant file ending in "\n".
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+
+        // "%0A" in the request URI, decoded by the router into the {path} attribute
+        $response = ($this->controller)(Request::create('/_image/'.$path.'%0A'), $path."\n");
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertSame([], glob($this->cacheDir.'/test.jpg/*') ?: []);
+    }
+
     public function testInvalidSignatureReturns403(): void
     {
         $path = 'test.jpg/aa00bb11cc22dd33_64_48_none_80.jpeg';
@@ -340,6 +353,22 @@ class ImageControllerTest extends TestCase
 
         try {
             $path = $this->cachePathResolver->resolve('ref.jpg', 64, null, null, 80, 'webp');
+            $response = $controller(Request::create('/_image/'.$path), $path);
+
+            self::assertSame(404, $response->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testEmptySegmentAfterSourcePrefixReturns404(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            // The source must not report "@reference//ref.jpg" as existing: the cache layer rejects the
+            // empty segment, and the request would end in an uncaught exception (500) instead of 404.
+            $path = $this->cachePathResolver->resolve('@reference//ref.jpg', 64, null, null, 80, 'webp');
             $response = $controller(Request::create('/_image/'.$path), $path);
 
             self::assertSame(404, $response->getStatusCode());

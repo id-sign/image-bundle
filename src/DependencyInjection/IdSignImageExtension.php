@@ -51,8 +51,8 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../../config'));
         $loader->load('services.yaml');
 
-        /** @var array<string, string> $sources */
-        $sources = $config['sources'] + [SourcePath::DEFAULT_SOURCE => Configuration::DEFAULT_SOURCE_PATH];
+        /** @var array<string, string> $sources always contains "default" — Configuration adds it when missing */
+        $sources = $config['sources'];
         $this->registerSources($container, $sources);
     }
 

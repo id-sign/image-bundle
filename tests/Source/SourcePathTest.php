@@ -16,6 +16,7 @@ class SourcePathTest extends TestCase
     public static function provideNormalize(): iterable
     {
         yield 'default prefix is stripped' => ['@default/uploads/photo.jpg', 'uploads/photo.jpg'];
+        yield 'repeated default prefix is stripped completely (idempotent)' => ['@default/@default/photo.jpg', 'photo.jpg'];
         yield 'no prefix is unchanged' => ['uploads/photo.jpg', 'uploads/photo.jpg'];
         yield 'other prefix is unchanged' => ['@reference/photo.jpg', '@reference/photo.jpg'];
         yield 'default without slash is unchanged' => ['@default', '@default'];

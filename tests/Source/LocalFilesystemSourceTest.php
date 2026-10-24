@@ -47,6 +47,13 @@ class LocalFilesystemSourceTest extends TestCase
         $this->source->getAbsolutePath('photos/../../README.md');
     }
 
+    public function testGetAbsolutePathRejectsDotSegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->getAbsolutePath('./test.jpg');
+    }
+
     public function testGetAbsolutePathRejectsEmptySegment(): void
     {
         $this->expectException(\InvalidArgumentException::class);

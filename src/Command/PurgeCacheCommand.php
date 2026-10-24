@@ -68,8 +68,18 @@ class PurgeCacheCommand extends Command
 
     private function purgeBySource(SymfonyStyle $io, string $src, bool $dryRun): int
     {
+        // Same validation as deleteBySource(), so the dry run reports what --force would really
+        // delete — and never walks outside the cache directory ("..", "", ".").
+        try {
+            $path = $this->cacheStorage->getAbsolutePath($src);
+        } catch (\InvalidArgumentException $e) {
+            $io->error(\sprintf('Invalid source path "%s": %s', $src, $e->getMessage()));
+
+            return Command::INVALID;
+        }
+
         if ($dryRun) {
-            $count = $this->countSourceFiles($this->cacheDirectory.'/'.$src);
+            $count = $this->countSourceFiles($path);
             $io->success(\sprintf('Would delete %d cached file(s) for "%s".', $count, $src));
         } else {
             $count = $this->cacheStorage->deleteBySource($src);

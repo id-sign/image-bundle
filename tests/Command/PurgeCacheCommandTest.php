@@ -6,7 +6,9 @@ namespace IdSign\ImageBundle\Tests\Command;
 
 use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Command\PurgeCacheCommand;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 
 class PurgeCacheCommandTest extends TestCase
@@ -86,6 +88,30 @@ class PurgeCacheCommandTest extends TestCase
 
         self::assertDirectoryExists($this->cacheDir.'/@reference/logo.png');
         self::assertStringContainsString('Would delete 2 cached file(s) for "@reference"', $this->tester->getDisplay());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidSourcePaths(): iterable
+    {
+        yield 'bare default prefix normalizes to an empty path' => ['@default/'];
+        yield 'current directory' => ['.'];
+        yield 'parent directory' => ['../..'];
+        yield 'empty segment' => ['uploads//photo.jpg'];
+    }
+
+    #[DataProvider('invalidSourcePaths')]
+    public function testInvalidSourcePathIsRejectedBeforeCountingOrDeleting(string $src): void
+    {
+        $dryRun = $this->tester->execute(['src' => $src]);
+        self::assertSame(Command::INVALID, $dryRun);
+        self::assertStringContainsString('Invalid source path', $this->tester->getDisplay());
+
+        $force = $this->tester->execute(['src' => $src, '--force' => true]);
+        self::assertSame(Command::INVALID, $force);
+        self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/meta.json');
+        self::assertFileExists($this->cacheDir.'/@reference/logo.png/meta.json');
     }
 
     public function testDryRunCountsNormalizedSource(): void

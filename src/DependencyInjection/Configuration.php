@@ -43,8 +43,14 @@ class Configuration implements ConfigurationInterface
                         ->end()
                     ->end()
                     ->validate()
+                        // Adds the default source when only named ones are configured. Validation runs on the
+                        // merged value of all config files; a beforeNormalization() default would let a file
+                        // that only adds named sources (e.g. a when@prod block) reset a "default" from the base file.
+                        ->always(static fn (array $v): array => $v + [SourcePath::DEFAULT_SOURCE => self::DEFAULT_SOURCE_PATH])
+                    ->end()
+                    ->validate()
                         // A leading letter also rejects the integer keys of a list written where a map was expected.
-                        ->ifTrue(static fn (array $v): bool => [] !== preg_grep('/^[A-Za-z][A-Za-z0-9_-]*$/', array_map('strval', array_keys($v)), \PREG_GREP_INVERT))
+                        ->ifTrue(static fn (array $v): bool => [] !== preg_grep('/^[A-Za-z][A-Za-z0-9_-]*$/D', array_map('strval', array_keys($v)), \PREG_GREP_INVERT))
                         ->thenInvalid('Source names must start with a letter and may only contain letters, digits, "_" and "-" (got %s).')
                     ->end()
                 ->end()

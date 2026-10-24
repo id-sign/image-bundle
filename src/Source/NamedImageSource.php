@@ -26,7 +26,11 @@ class NamedImageSource implements ImageSourceInterface
 
     public function exists(string $path): bool
     {
-        [$source, $relative] = $this->resolve($path);
+        try {
+            [$source, $relative] = $this->resolve($path);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
 
         return null !== $source && $source->exists($relative);
     }
@@ -54,6 +58,11 @@ class NamedImageSource implements ImageSourceInterface
      * URL or cache directory for a file the default source already serves without the prefix.
      *
      * @return array{ImageSourceInterface|null, string}
+     *
+     * @throws \InvalidArgumentException when nothing or a further slash follows "@name/": the cache layer
+     *                                   rejects that empty segment, so the source must not report a file
+     *                                   there (LocalFilesystemSource alone would trim the slash away and
+     *                                   the controller would answer 500 instead of 404)
      */
     private function resolve(string $path): array
     {
@@ -71,6 +80,11 @@ class NamedImageSource implements ImageSourceInterface
             return [null, $path];
         }
 
-        return [$this->named->get($name), substr($path, $slash + 1)];
+        $relative = substr($path, $slash + 1);
+        if ('' === $relative || str_starts_with($relative, '/')) {
+            throw new \InvalidArgumentException(\sprintf('Invalid path segment (empty) in: %s', $path));
+        }
+
+        return [$this->named->get($name), $relative];
     }
 }
