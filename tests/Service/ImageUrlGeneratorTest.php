@@ -82,6 +82,17 @@ class ImageUrlGeneratorTest extends TestCase
         self::assertSame($url1, $url2);
     }
 
+    /**
+     * Like <twig:Image>: no variant, no signature — a signed raster URL would make the controller rasterize an
+     * untrusted SVG (and collide with the passthrough cache file).
+     */
+    public function testSvgSourceYieldsThePassthroughUrl(): void
+    {
+        self::assertSame('/_image/icons/logo.svg', $this->generator->generate('icons/logo.svg', 800, 600, 'cover', 80, 'avif'));
+        self::assertSame('/_image/icons/logo.svg', $this->generator->generateFromRequest(Request::create('/'), 'icons/logo.svg', 800));
+        self::assertSame('/_image/%40reference/icons/Logo.SVG', $this->generator->generate('@reference/icons/Logo.SVG', 800));
+    }
+
     public function testDefaultSourcePrefixYieldsTheSameUrlAsNoPrefix(): void
     {
         self::assertSame(

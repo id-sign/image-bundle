@@ -34,6 +34,24 @@ class ImageMetadataReaderTest extends TestCase
     }
 
     /**
+     * frames.gif: 60x40 first frame, 1x1 last frame. pingImage() stops on the last frame, so the dimensions must come
+     * from the first frame and the pixel limit must count both (2 401 pixels).
+     */
+    public function testMultiFrameSourceReportsTheFirstFrameAndCountsAllFramesTowardsTheLimit(): void
+    {
+        self::assertSame(['width' => 60, 'height' => 40], $this->reader->getDimensions('frames.gif'));
+
+        $limited = new ImageMetadataReader(
+            new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+            new SourceSizeValidator(0, 2_400),
+            new LocalFilesystemCacheStorage($this->cacheDir.'-limited', 3600, 0o660, 0o770),
+        );
+
+        self::assertSame(['width' => 0, 'height' => 0], $limited->getDimensions('frames.gif'));
+        self::assertFileDoesNotExist($this->cacheDir.'-limited/frames.gif/meta.json');
+    }
+
+    /**
      * @return iterable<string, array{int, ?int}>
      */
     public static function fittingBoxProvider(): iterable

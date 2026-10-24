@@ -195,7 +195,8 @@ orientation is applied before the EXIF block is dropped. The conversion runs on 
 generated; a source tagged with one of the sRGB profile variants (camera and Photoshop JPEGs) is recognised in about
 2 ms and not converted. A profile that cannot be converted (truncated, or not matching the image) is logged as a
 warning and stripped without conversion. The sRGB target is the ICC's `sRGB2014.icc`, bundled in `resources/`; the
-bundle refuses to build the container when that file is missing.
+bundle refuses to build the container when that file is missing. The conversion runs in LittleCMS through ImageMagick,
+on the profile embedded in the source file — keep `lcms2` as current as ImageMagick itself.
 
 Not handled, and taken as sRGB like browsers do: PNG files that declare their primaries only through `cHRM`/`gAMA`
 chunks, and AVIF/HEIC files whose colour space is given only by an `nclx` box without an ICC profile (`avifenc`,
@@ -515,6 +516,10 @@ All **raster** image URLs are signed with HMAC-SHA256 derived from `kernel.secre
 path, so any modification of parameters (width, height, quality, etc.) results in a `403 Forbidden` response. This
 prevents cache exhaustion attacks where an attacker generates arbitrary image variants.
 
+The output format is not part of the signature (one signature covers every `<source>` of a width), so the controller
+generates only the formats the application links to: the configured `formats` plus the source's fallback format
+(`jpeg`, `png`, `webp` or `avif`, see [Component attributes](#component-attributes)). Any other extension answers `404`.
+
 SVG URLs are **not** signed — SVG has no parameter variations, so HMAC would add no protection against cache
 exhaustion. See [Security model](#security-model) below for the implications.
 
@@ -537,13 +542,17 @@ authorization. If you need:
 
 - **Authorization per user/role:** use `serve_mode: controller` and add a Symfony firewall / `#[IsGranted]` in front of
   the bundle route. In public mode the web server serves cached files directly and bypasses Symfony security.
+- **Authorization per image:** enforce it before the bundle route as well — a firewall rule, a request listener or a
+  controller of your own that checks the `src` and forwards. A custom `ImageSourceInterface` cannot do it: a cached
+  variant is served without consulting the source (see [Serve modes](#serve-modes)), so an `exists()` that returns
+  `false` for some users only takes effect while the variant is not cached yet.
 - **Private storage with controlled access:** implement a custom `ImageSourceInterface` pointing at a non-public
-  location, and use `serve_mode: controller` with access control.
+  location, and use `serve_mode: controller` with access control in front of the route.
 
 ### Path traversal and symlinks
 
-Input paths (`src` values) are checked for `..` and empty segments and rejected with `400`/`403` at the controller /
-cache layer. **Symlinks are followed transparently** — the bundle assumes any symlink inside the source directory was
+Input paths (`src` values) are checked for `..`, `.`, empty and backslash-containing segments (Windows takes `\` as a
+separator too) and rejected at the source and cache layer (`404` from the controller). **Symlinks are followed transparently** — the bundle assumes any symlink inside the source directory was
 placed there intentionally by the administrator. If you don't want symlinks followed, audit your source tree (e.g.
 `find data/ -type l`) and remove unexpected ones before relying on the boundary.
 
@@ -554,8 +563,10 @@ pixels, 64 MP) rejects images whose header announces more pixels than that. The 
 highly compressed 100 MP JPEG is about 15 MB and a flat 30 000 × 30 000 PNG a few hundred kB, yet decoding either
 needs over a gigabyte — above ImageMagick's memory policy it falls back to a disk-backed pixel cache that takes
 seconds to minutes per variant. Both checks run before Imagick decodes anything (the pixel check reads only the
-header) and the image URL answers `413`; a page that renders such an image gets no `height` and no blur placeholder,
-like for a missing source. Raise `max_source_pixels` for medium-format photography (100 MP and more) or set it to `0`
+header, every frame of a GIF, APNG, animated WebP or multi-page TIFF counted — only the first frame is processed) and
+the image URL answers `413`; a page that renders such an image gets no `height` and no blur placeholder, like for a
+missing source. These limits are a safety net, not upload validation — see
+[Validating uploaded images](#validating-uploaded-images). Raise `max_source_pixels` for medium-format photography (100 MP and more) or set it to `0`
 to disable the check. Also configure ImageMagick's `policy.xml` to restrict memory/width/height limits and disable
 dangerous coders (`MVG`, `MSL`, `PDF`, `EPHEMERAL`, `URL`). The bundle cannot substitute for a properly configured
 ImageMagick policy.
@@ -569,9 +580,10 @@ user-uploaded SVGs, you must either sanitize before storage, or harden the serve
 
 ## Webserver hardening for SVG
 
-In public mode the web server serves cached SVG files directly via `try_files` — PHP is not involved, so the bundle
-cannot set response headers on those requests. To block script execution in served SVGs, add a `Content-Security-Policy:
-sandbox` header in the web server configuration:
+The bundle sends SVG with `Content-Type: image/svg+xml` and nothing else; security headers are the web server's job in
+**both** serve modes — in public mode PHP is not involved at all, in controller mode the web server still sees the URL
+and can match it. To block script execution in served SVGs, add a `Content-Security-Policy: sandbox` header in the web
+server configuration. Match the extension case-insensitively: the bundle serves `logo.SVG` as SVG too.
 
 ### Nginx
 
@@ -590,7 +602,7 @@ location ~* ^/_image/.+\.svg$ {
 ### Apache
 
 ```apache
-<LocationMatch "^/_image/.+\.svg$">
+<LocationMatch "(?i)^/_image/.+\.svg$">
     Header always set Content-Security-Policy "sandbox"
     Header always set X-Content-Type-Options "nosniff"
 </LocationMatch>
@@ -599,7 +611,7 @@ location ~* ^/_image/.+\.svg$ {
 ### Caddy
 
 ```
-@image_svg path_regexp ^/_image/.+\.svg$
+@image_svg path_regexp (?i)^/_image/.+\.svg$
 header @image_svg Content-Security-Policy "sandbox"
 header @image_svg X-Content-Type-Options "nosniff"
 ```
@@ -769,6 +781,15 @@ versions stripped the profile without converting, so their variants and blur pla
 washed-out colours. The URLs are unchanged, so purge them:
 `image:purge <src> --force` per source, or `image:purge --force` for everything.
 
+The controller generates only the configured `formats` plus the source's fallback format; a URL with another extension
+answers `404` (it used to produce the variant), and `.jpg` is no longer accepted as a variant extension (the bundle
+always generated `.jpeg`). A multi-frame source (GIF, APNG, animated WebP, multi-page TIFF) is now processed from its
+first frame — it used to be the last — and all frames count towards `max_source_pixels`. `image_url()` and
+`ImageUrlGenerator` return the passthrough URL for an `.svg` source instead of a signed raster URL. Responses carry an
+explicit `Content-Type` (previously guessed through `symfony/mime`, which the bundle never required). If a custom
+`ImageSourceInterface` enforced per-image authorization in `exists()`, move it in front of the route — see
+[Security model](#security-model).
+
 ### Upgrading from v0.2.4 or earlier
 
 Cached dimensions (`meta.json`) and blur placeholders (`blur.txt`) now follow EXIF orientation. Entries cached by an
@@ -828,7 +849,9 @@ class ImageApiController
 
 ### Twig function `image_url()`
 
-For contexts where you need a single image URL instead of a full `<picture>` tag — og tags, emails, JSON-LD, etc.:
+For contexts where you need a single image URL instead of a full `<picture>` tag — og tags, emails, JSON-LD, etc.
+For an `.svg` source it returns the passthrough URL (`/_image/icons/logo.svg`), like `<twig:Image>`; the same holds for
+`ImageUrlGenerator`.
 
 ```twig
 {# Format negotiated from current request (AVIF > WebP > original) #}
