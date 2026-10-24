@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Service;
 
+use Psr\Log\LoggerInterface;
+
 class ImagickProcessor implements ImageProcessorInterface
 {
     public function __construct(
         private readonly SourceSizeValidator $sourceSizeValidator,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -80,7 +83,7 @@ class ImagickProcessor implements ImageProcessorInterface
 
             // After the fit (small output), before the watermark (composited in sRGB) and before stripImage()
             // drops the embedded profile. See ColorProfile for why transformImageColorspace() alone is not enough.
-            ColorProfile::normalizeToSrgb($imagick);
+            ColorProfile::normalizeToSrgb($imagick, $this->logger);
 
             if (null !== $watermark) {
                 $this->applyWatermark($imagick, $watermark);
@@ -206,6 +209,8 @@ class ImagickProcessor implements ImageProcessorInterface
             $imgHeight = $imagick->getImageHeight();
             $targetWidth = (int) round($imgWidth * $options->size / 100);
             $watermark->thumbnailImage($targetWidth, 0);
+            // A watermark exported in Display P3 or Adobe RGB is composited onto an sRGB image: convert it too.
+            ColorProfile::normalizeToSrgb($watermark, $this->logger);
 
             if ($options->opacity < 100) {
                 $watermark->evaluateImage(\Imagick::EVALUATE_MULTIPLY, $options->opacity / 100, \Imagick::CHANNEL_ALPHA);

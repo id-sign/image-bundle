@@ -188,11 +188,13 @@ Output:
 
 Every variant is written in sRGB without metadata. A source with an embedded ICC profile — Display P3 (every iPhone
 photo), Adobe RGB, a monitor profile in a screenshot, a CMYK press profile — is converted to sRGB through that profile
-before it is stripped, so the colours stay as intended; a source without a profile is taken as sRGB. EXIF orientation
-is applied before the EXIF block is dropped. The conversion runs on the resized output (about 40 ms for 800 × 600)
-and only when a variant is generated; a source tagged with one of the sRGB profile variants (camera and Photoshop
-JPEGs) is recognised in about 2 ms and not converted. The sRGB target is the ICC's `sRGB2014.icc`, bundled in
-`resources/`.
+before it is stripped, so the colours stay as intended; a source without a profile is taken as sRGB. A watermark image
+with a profile is converted the same way before it is composited. EXIF orientation is applied before the EXIF block
+is dropped. The conversion runs on the resized output (about 40 ms for 800 × 600) and only when a variant is
+generated; a source tagged with one of the sRGB profile variants (camera and Photoshop JPEGs) is recognised in about
+2 ms and not converted. A profile that cannot be converted (truncated, or not matching the image) is logged as a
+warning and stripped without conversion. The sRGB target is the ICC's `sRGB2014.icc`, bundled in `resources/`; the
+bundle refuses to build the container when that file is missing.
 
 ## Component attributes
 
