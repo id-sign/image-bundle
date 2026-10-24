@@ -559,9 +559,10 @@ and in the cache directory (`public/_image/@reference/screenshot.png/`), so vari
 `logo.png` never collide, and `image:purge '@reference/screenshot.png'` deletes exactly that source's variants.
 `@default/photo.jpg` is normalized to `photo.jpg` on input, so both spellings share one URL and one cache directory.
 
-Source names may contain letters, digits, `_` and `-` and are case-sensitive. A path with an unknown source name
-behaves like a missing file: the page renders without `height` and blur, the image URL returns 404. Every configured
-source is a public asset tree — see [Security model](#security-model).
+Source names start with a letter, may contain letters, digits, `_` and `-`, and are case-sensitive. Source paths must
+be absolute (a `%parameter%` counts). A path with an unknown source name behaves like a missing file: the page renders
+without `height` and blur, the image URL returns 404. Every configured source is a public asset tree — see
+[Security model](#security-model).
 
 ### Custom source implementations
 
@@ -613,6 +614,10 @@ php bin/console image:purge uploads/photo.jpg --force
 
 # Variants of an image from a named source
 php bin/console image:purge @reference/logo.png --force
+
+# Everything cached below a directory prefix or a whole source
+php bin/console image:purge uploads/2024 --force
+php bin/console image:purge @reference --force
 ```
 
 ### Purge by age
@@ -627,6 +632,19 @@ php bin/console image:purge --accessed-before=14 --force
 # Combine both
 php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 ```
+
+### Upgrading from v0.3.0 or earlier
+
+A leading `@` in `src` now selects a named source. A file of the default source whose first path segment starts with
+`@` (`data/@scope/hero.jpg`, rendered as `src="@scope/hero.jpg"`) is read as a reference to a source named `scope` and
+returns 404. Either rename the directory, or register it as that source —
+`sources: { scope: '%kernel.project_dir%/data/@scope' }` — which keeps the existing URLs and cache entries valid
+because `src`, signature and cache directory stay the same.
+
+The default `device_sizes` gained `320` and `480`. Images rendered with a larger `width` get up to two new srcset
+candidates per format; browsers on narrow viewports request them and they are generated on first request like any
+other variant, so expect a small, one-off wave of cache misses. Set `device_sizes` explicitly to the previous list
+(`[640, 750, 828, 1080, 1200, 1920, 2048, 3840]`) to keep the old markup.
 
 ### Upgrading from v0.2.4 or earlier
 

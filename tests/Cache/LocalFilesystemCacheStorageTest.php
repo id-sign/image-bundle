@@ -100,6 +100,20 @@ class LocalFilesystemCacheStorageTest extends TestCase
         self::assertDirectoryDoesNotExist($this->cacheDir.'/uploads/photo.jpg');
     }
 
+    public function testDeleteBySourceRemovesDirectoryPrefixRecursively(): void
+    {
+        $this->createCacheFile('@reference/logo.png/abc_800_auto_none_80.avif');
+        $this->createCacheFile('@reference/logo.png/meta.json');
+        $this->createCacheFile('@reference/icons/pin.svg');
+        $this->createCacheFile('uploads/photo.jpg/abc_800_auto_none_80.avif');
+
+        $count = $this->storage->deleteBySource('@reference');
+
+        self::assertSame(3, $count);
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/@reference');
+        self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/abc_800_auto_none_80.avif');
+    }
+
     public function testDeleteBySourceRemovesSvgFile(): void
     {
         $this->createCacheFile('icons/logo.svg');

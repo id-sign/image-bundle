@@ -16,12 +16,14 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 - Symfony 7.4+ | 8.0+
 - ext-imagick
 - `symfony/ux-twig-component` (bundle dependency)
+- `symfony/yaml` (the DI extension loads `services.yaml`)
+- `symfony/service-contracts` (`ResetInterface`, `ServiceProviderInterface`)
 
 ### Dev dependencies
 
+- `friendsofphp/php-cs-fixer`
 - `phpstan/phpstan` + `phpstan/phpstan-symfony` (level 9)
 - `phpunit/phpunit`
-- `symfony/yaml` (bundle loads `services.yaml`; needed by the DI extension test)
 
 ## Architecture
 
@@ -121,7 +123,9 @@ Source path (`src`) is the first path segment — this means all cached data for
 `uploads/photo.jpg/` directory, which removes everything at once. This colocation is intentional — if metadata or blur
 cache were stored elsewhere, `deleteBySource()` would need to know about and clean up multiple locations. SVG files are
 cached as a single file at `{src}` (no variants directory), so `deleteBySource('icons/logo.svg')` deletes the file
-directly via `delete()`.
+directly. The deletion is recursive, so a directory prefix works too: `deleteBySource('uploads/2024')` or
+`deleteBySource('@reference')` removes every variants directory below it — that is what `image:purge @reference --force`
+relies on (the dry run counts the same subtree).
 
 #### Image source abstraction
 
@@ -138,17 +142,21 @@ about sources, and `@reference/logo.png` and `logo.png` can never share a cache 
 (`ImageComponent::postMount()`, `ImageUrlExtension::imageUrl()`, `ImageUrlGenerator::generate()`,
 `PurgeCacheCommand`), so `@default/x.jpg` and `x.jpg` yield one URL and one cache directory. `NamedImageSource`
 deliberately rejects `@default/` and unknown names: `exists()` returns false, `getAbsolutePath()` throws
-`UnknownImageSourceException` (an `InvalidArgumentException`, same contract as `..`). An unknown source name therefore
+`UnknownImageSourceException` (an `InvalidArgumentException`, same contract as `..`; `forDefaultPrefix()` carries a
+message pointing to `SourcePath::normalize()` instead of "unknown source"). An unknown source name therefore
 behaves like a missing file — page renders without `height`/blur, image URL returns 404 (a `@default/` inserted into a
 signed URL returns 403 because the signature covers a different string).
 
-Configuration: `sources: {name: absolute path}`. `Configuration` validates names against `[A-Za-z0-9_-]+` and keeps
-keys verbatim (`normalizeKeys(false)`, the name ends up in URLs). `IdSignImageExtension` adds
-`default: %kernel.project_dir%/data` when missing, sets `$basePath` of the `LocalFilesystemSource` service from
-`sources.default` (an application-level override of that definition still wins, as before 0.4), and registers every
-other source as `id_sign_image.source.{name}` (`LocalFilesystemSource`) tagged `id_sign_image.source`. Custom
-implementations plug in through the same tag; a custom default re-points the `id_sign_image.source.default` alias.
-`..` protection lives in each `LocalFilesystemSource`, so it applies inside every source. `$default` in
+Configuration: `sources: {name: absolute path}`. `Configuration` validates names against `[A-Za-z][A-Za-z0-9_-]*`
+(the leading letter also rejects the integer keys of a YAML list written where a map was expected), requires absolute
+paths (`/…`, `%param%…` or a Windows drive — a relative path would resolve against the CWD, which differs between web
+server and console) and keeps keys verbatim (`normalizeKeys(false)`, the name ends up in URLs). `IdSignImageExtension`
+adds `default: Configuration::DEFAULT_SOURCE_PATH` (`%kernel.project_dir%/data`, the only place that literal lives)
+when missing, sets `$basePath` of the `LocalFilesystemSource` service from `sources.default` (`services.yaml` declares
+the service without arguments; an application-level override of that definition still wins, as before 0.4), and
+registers every other source as `id_sign_image.source.{name}` (`LocalFilesystemSource`) tagged `id_sign_image.source`.
+Custom implementations plug in through the same tag; a custom default re-points the `id_sign_image.source.default`
+alias. `..` protection lives in each `LocalFilesystemSource`, so it applies inside every source. `$default` in
 `NamedImageSource` must stay explicitly bound in `services.yaml` — autowiring by type would resolve to the interface
 alias, i.e. to the composite itself.
 

@@ -36,7 +36,11 @@ class NamedImageSource implements ImageSourceInterface
         [$source, $relative] = $this->resolve($path);
 
         if (null === $source) {
-            throw new UnknownImageSourceException($path);
+            if (str_starts_with($path, SourcePath::DEFAULT_PREFIX)) {
+                throw UnknownImageSourceException::forDefaultPrefix($path);
+            }
+
+            throw UnknownImageSourceException::forUnknownName($path);
         }
 
         return $source->getAbsolutePath($relative);

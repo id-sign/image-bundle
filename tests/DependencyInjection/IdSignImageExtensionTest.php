@@ -57,7 +57,6 @@ class IdSignImageExtensionTest extends TestCase
         $container = $this->load([]);
 
         self::assertSame('%kernel.project_dir%/data', $container->getDefinition(LocalFilesystemSource::class)->getArgument('$basePath'));
-        self::assertSame(['default' => '%kernel.project_dir%/data'], $container->getParameter('id_sign_image.sources'));
         self::assertSame([], $container->findTaggedServiceIds('id_sign_image.source'));
     }
 
@@ -84,10 +83,7 @@ class IdSignImageExtensionTest extends TestCase
         $container = $this->load(['sources' => ['reference' => '/srv/reference']]);
 
         self::assertSame('%kernel.project_dir%/data', $container->getDefinition(LocalFilesystemSource::class)->getArgument('$basePath'));
-        self::assertSame(
-            ['reference' => '/srv/reference', 'default' => '%kernel.project_dir%/data'],
-            $container->getParameter('id_sign_image.sources'),
-        );
+        self::assertSame(['id_sign_image.source.reference'], array_keys($container->findTaggedServiceIds('id_sign_image.source')));
     }
 
     public function testSourceNameWithDashIsKeptVerbatim(): void
@@ -101,9 +97,18 @@ class IdSignImageExtensionTest extends TestCase
     public function testInvalidSourceNameIsRejected(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('Source names may only contain');
+        $this->expectExceptionMessage('Source names must start with a letter');
 
         $this->load(['sources' => ['bad name' => '/srv/x']]);
+    }
+
+    public function testListInsteadOfMapIsRejected(): void
+    {
+        // A YAML list yields integer keys; without this check it would silently register a source named "0".
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Source names must start with a letter');
+
+        $this->load(['sources' => ['/srv/x']]);
     }
 
     public function testEmptySourcePathIsRejected(): void
@@ -111,6 +116,25 @@ class IdSignImageExtensionTest extends TestCase
         $this->expectException(InvalidConfigurationException::class);
 
         $this->load(['sources' => ['reference' => '']]);
+    }
+
+    public function testRelativeSourcePathIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Source paths must be absolute');
+
+        $this->load(['sources' => ['reference' => 'assets/reference']]);
+    }
+
+    public function testParameterAndDriveLetterPathsCountAsAbsolute(): void
+    {
+        $container = $this->load(['sources' => [
+            'env' => '%env(IMAGE_DIR)%',
+            'win' => 'C:\\images',
+        ]]);
+
+        self::assertTrue($container->hasDefinition('id_sign_image.source.env'));
+        self::assertTrue($container->hasDefinition('id_sign_image.source.win'));
     }
 
     public function testCompiledContainerWiresNamedSourceBehindTheInterfaceAlias(): void

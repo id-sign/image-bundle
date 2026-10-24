@@ -91,6 +91,7 @@ class NamedImageSourceTest extends TestCase
         self::assertFalse($this->source->exists('@default/test.jpg'));
 
         $this->expectException(UnknownImageSourceException::class);
+        $this->expectExceptionMessage('SourcePath::normalize()');
 
         $this->source->getAbsolutePath('@default/test.jpg');
     }
