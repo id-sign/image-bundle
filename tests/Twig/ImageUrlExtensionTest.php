@@ -388,4 +388,46 @@ class ImageUrlExtensionTest extends TestCase
 
         return new ImageUrlGenerator($resolver, $negotiator, '/_image');
     }
+
+    public function testDefaultSourcePrefixYieldsTheSameUrlAsNoPrefix(): void
+    {
+        self::assertSame(
+            $this->extension->imageUrl('uploads/photo.jpg', 800, format: 'webp'),
+            $this->extension->imageUrl('@default/uploads/photo.jpg', 800, format: 'webp'),
+        );
+    }
+
+    public function testDefaultSourcePrefixIsStrippedBeforeMetadataLookup(): void
+    {
+        $signer = new UrlSigner('test-secret');
+        $resolver = new CachePathResolver($signer);
+        $metadataReader = $this->createMock(ImageMetadataReader::class);
+        $metadataReader->expects($this->once())
+            ->method('calculateHeight')
+            ->with('uploads/photo.jpg', 800)
+            ->willReturn(600);
+
+        $extension = new ImageUrlExtension(
+            new ImageUrlGenerator($resolver, new FormatNegotiator(['avif', 'webp']), '/_image'),
+            $metadataReader,
+            new RequestStack(),
+            80,
+            null,
+            true,
+            4096,
+            false,
+        );
+
+        $url = $extension->imageUrl('@default/uploads/photo.jpg', 800, fit: 'cover', format: 'webp');
+
+        self::assertStringStartsWith('/_image/uploads/photo.jpg/', $url);
+        self::assertStringContainsString('_800_600_cover_80.webp', $url);
+    }
+
+    public function testNamedSourcePrefixIsPartOfTheUrl(): void
+    {
+        $url = $this->extension->imageUrl('@reference/uploads/photo.jpg', 800, format: 'webp');
+
+        self::assertStringStartsWith('/_image/%40reference/uploads/photo.jpg/', $url);
+    }
 }

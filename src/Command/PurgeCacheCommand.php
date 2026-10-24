@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Command;
 
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
@@ -29,7 +30,7 @@ class PurgeCacheCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('src', InputArgument::OPTIONAL, 'Source image path to purge (e.g. uploads/photo.jpg)')
+            ->addArgument('src', InputArgument::OPTIONAL, 'Source image path to purge (e.g. uploads/photo.jpg or @reference/logo.png)')
             ->addOption('modified-before', null, InputOption::VALUE_REQUIRED, 'Delete files not modified in N days')
             ->addOption('accessed-before', null, InputOption::VALUE_REQUIRED, 'Delete files not accessed in N days (on noatime filesystems falls back to mtime)')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Actually delete files (without this flag, only shows what would be deleted)')
@@ -41,6 +42,7 @@ class PurgeCacheCommand extends Command
         $io = new SymfonyStyle($input, $output);
         /** @var string|null $src */
         $src = $input->getArgument('src');
+        $src = null !== $src ? SourcePath::normalize($src) : null;
         /** @var string|null $modifiedBefore */
         $modifiedBefore = $input->getOption('modified-before');
         /** @var string|null $accessedBefore */

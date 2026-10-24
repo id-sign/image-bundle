@@ -7,13 +7,14 @@
     "require": {
         "php": ">=8.2",
         "ext-imagick": "*",
-        "symfony/http-kernel": "^7.4|^8.0",
-        "symfony/http-foundation": "^7.4|^8.0",
-        "symfony/dependency-injection": "^7.4|^8.0",
         "symfony/config": "^7.4|^8.0",
-        "symfony/routing": "^7.4|^8.0",
         "symfony/console": "^7.4|^8.0",
-        "symfony/ux-twig-component": "^2.25|^3.0.0"
+        "symfony/dependency-injection": "^7.4|^8.0",
+        "symfony/http-foundation": "^7.4|^8.0",
+        "symfony/http-kernel": "^7.4|^8.0",
+        "symfony/routing": "^7.4|^8.0",
+        "symfony/ux-twig-component": "^2.25|^3.0.0",
+        "symfony/yaml": "^7.4|^8.0"
     },
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.94",

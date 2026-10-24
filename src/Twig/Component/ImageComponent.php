@@ -9,6 +9,7 @@ use IdSign\ImageBundle\Service\BlurPlaceholderGenerator;
 use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\UX\TwigComponent\Attribute\AsTwigComponent;
 use Symfony\UX\TwigComponent\Attribute\ExposeInTemplate;
 use Symfony\UX\TwigComponent\Attribute\PostMount;
@@ -64,6 +65,8 @@ class ImageComponent
     #[PostMount]
     public function postMount(): void
     {
+        $this->src = SourcePath::normalize($this->src);
+
         if ($this->width <= 0) {
             throw new \InvalidArgumentException(\sprintf('The "width" prop is required and must be > 0 on <twig:Image src="%s" />. It is the intrinsic width of the generated image file in pixels — pick the largest size the image will ever render at. See docs for guidance.', $this->src));
         }

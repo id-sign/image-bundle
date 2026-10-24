@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\DependencyInjection;
 
+use IdSign\ImageBundle\Source\LocalFilesystemSource;
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -28,6 +30,10 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
 
         $container->setParameter('id_sign_image.device_sizes', $config['device_sizes']);
         $container->setParameter('id_sign_image.default_quality', $config['default_quality']);
+
+        /** @var array<string, string> $sources */
+        $sources = $config['sources'] + [SourcePath::DEFAULT_SOURCE => '%kernel.project_dir%/data'];
+        $container->setParameter('id_sign_image.sources', $sources);
         $container->setParameter('id_sign_image.formats', $config['formats']);
         $container->setParameter('id_sign_image.cache.ttl', $config['cache']['ttl']);
         $container->setParameter('id_sign_image.cache.path', $config['cache']['path']);
@@ -47,5 +53,30 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
 
         $loader = new YamlFileLoader($container, new FileLocator(__DIR__.'/../../config'));
         $loader->load('services.yaml');
+
+        $this->registerSources($container, $sources);
+    }
+
+    /**
+     * The default source stays on the LocalFilesystemSource service id so an application-level
+     * override of its $basePath keeps working; every other source becomes its own tagged
+     * LocalFilesystemSource, collected by NamedImageSource through the "id_sign_image.source" tag.
+     *
+     * @param array<string, string> $sources
+     */
+    private function registerSources(ContainerBuilder $container, array $sources): void
+    {
+        $container->getDefinition(LocalFilesystemSource::class)
+            ->setArgument('$basePath', $sources[SourcePath::DEFAULT_SOURCE]);
+
+        foreach ($sources as $name => $basePath) {
+            if (SourcePath::DEFAULT_SOURCE === $name) {
+                continue;
+            }
+
+            $container->register('id_sign_image.source.'.$name, LocalFilesystemSource::class)
+                ->setArgument('$basePath', $basePath)
+                ->addTag('id_sign_image.source', ['name' => $name]);
+        }
     }
 }
