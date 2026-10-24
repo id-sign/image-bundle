@@ -63,6 +63,20 @@ class BlurPlaceholderGeneratorTest extends TestCase
         self::assertSame($dataUri, file_get_contents($this->cacheDir.'/rotated.jpg/blur.txt'));
     }
 
+    public function testSourceAbovePixelLimitYieldsEmptyPlaceholderWithoutCacheWrite(): void
+    {
+        $generator = new BlurPlaceholderGenerator(
+            new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+            new SourceSizeValidator(0, 1_000), // rotated.jpg is 40x30 = 1 200 pixels
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770),
+            10,
+            30,
+        );
+
+        self::assertSame('', $generator->generate('rotated.jpg'));
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/rotated.jpg');
+    }
+
     public function testMissingSourceYieldsEmptyPlaceholderWithoutCacheWrite(): void
     {
         $generator = new BlurPlaceholderGenerator(

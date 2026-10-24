@@ -40,7 +40,13 @@ class ImageMetadataReader implements ResetInterface
                 return $this->cache[$src] = ['width' => 0, 'height' => 0];
             }
 
-            $dimensions = $this->readDimensions($src);
+            try {
+                $dimensions = $this->readDimensions($src);
+            } catch (SourceTooLargeException) {
+                // Like a missing source: the page renders without height, the image URL answers 413.
+                return $this->cache[$src] = ['width' => 0, 'height' => 0];
+            }
+
             $json = json_encode($dimensions, \JSON_THROW_ON_ERROR);
 
             // Atomic (tmp file + rename) through the storage: a concurrent reader never sees a truncated file.
@@ -140,6 +146,7 @@ class ImageMetadataReader implements ResetInterface
             // pingImage reads only the header — orders of magnitude faster than new Imagick($path),
             // which decodes the full pixel buffer just to learn the dimensions.
             $imagick->pingImage($sourcePath);
+            $this->sourceSizeValidator->assertPixelsFit($imagick->getImageWidth(), $imagick->getImageHeight(), $sourcePath);
 
             // ImageMagick's WebP coder returns from ping before it reads the EXIF chunk, so the orientation is lost.
             if ('WEBP' === $imagick->getImageFormat() && self::hasWebpExifFlag($sourcePath)) {

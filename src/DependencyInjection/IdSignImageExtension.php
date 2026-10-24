@@ -45,6 +45,7 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
         $container->setParameter('id_sign_image.lossless', $config['lossless']);
         $container->setParameter('id_sign_image.max_width', $config['max_width']);
         $container->setParameter('id_sign_image.max_source_bytes', $config['max_source_bytes']);
+        $container->setParameter('id_sign_image.max_source_pixels', $config['max_source_pixels']);
         $container->setParameter('id_sign_image.serve_mode', $config['serve_mode']);
         $container->setParameter('id_sign_image.route_prefix', $config['route_prefix']);
 

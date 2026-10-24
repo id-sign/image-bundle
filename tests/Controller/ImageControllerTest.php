@@ -30,20 +30,42 @@ class ImageControllerTest extends TestCase
         $this->cacheDir = sys_get_temp_dir().'/id_sign_image_ctrl_test_'.uniqid();
         mkdir($this->cacheDir, 0o775, true);
 
-        $signer = new UrlSigner('test-secret');
-        $this->cachePathResolver = new CachePathResolver($signer);
+        $this->cachePathResolver = new CachePathResolver(new UrlSigner('test-secret'));
+        $this->controller = $this->createController(new SourceSizeValidator(0));
+    }
 
-        $sizeValidator = new SourceSizeValidator(0);
-
-        $this->controller = new ImageController(
+    private function createController(SourceSizeValidator $sizeValidator): ImageController
+    {
+        return new ImageController(
             new ImagickProcessor($sizeValidator),
             new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $this->cachePathResolver,
-            $signer,
+            new UrlSigner('test-secret'),
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             new WatermarkRegistry([]),
             $sizeValidator,
         );
+    }
+
+    public function testSourceAbovePixelLimitReturns413WithoutCaching(): void
+    {
+        $controller = $this->createController(new SourceSizeValidator(0, 1_000)); // test.jpg is 7 500 pixels
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+
+        $response = $controller(Request::create('/_image/'.$path), $path);
+
+        self::assertSame(413, $response->getStatusCode());
+        self::assertFileDoesNotExist($this->cacheDir.'/'.$path);
+    }
+
+    public function testSvgAboveByteLimitReturns413WithoutCaching(): void
+    {
+        $controller = $this->createController(new SourceSizeValidator(16));
+
+        $response = $controller(Request::create('/_image/logo.svg'), 'logo.svg');
+
+        self::assertSame(413, $response->getStatusCode());
+        self::assertFileDoesNotExist($this->cacheDir.'/logo.svg');
     }
 
     protected function tearDown(): void

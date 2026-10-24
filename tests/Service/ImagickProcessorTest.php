@@ -8,6 +8,7 @@ use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\ExifOrientation;
 use IdSign\ImageBundle\Service\ImagickProcessor;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
+use IdSign\ImageBundle\Service\SourceTooLargeException;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
 use IdSign\ImageBundle\Service\UrlSigner;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -159,6 +160,16 @@ class ImagickProcessorTest extends TestCase
         $size = getimagesize($output);
         self::assertNotFalse($size);
         self::assertSame([$expectedWidth, $expectedHeight], [$size[0], $size[1]]);
+    }
+
+    public function testSourceAbovePixelLimitIsRejected(): void
+    {
+        // test.jpg is 100x75 = 7 500 pixels
+        $processor = new ImagickProcessor(new SourceSizeValidator(0, 1_000));
+
+        $this->expectException(SourceTooLargeException::class);
+
+        $processor->process(__DIR__.'/../Fixtures/test.jpg', $this->tmpPath('webp'), 50, null, null, 'webp', 80);
     }
 
     /**

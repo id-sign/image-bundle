@@ -229,6 +229,14 @@ need anyway to avoid orphaned cache entries.
   already decodes small). Output is pixel-identical for the proportional resize; `cover`/`contain` may differ from
   rotate-first by ≤1/255 (integer crop offset, 16-bit intermediate rounding in `thumbnailImage`), far below encoder
   noise, so cached variants stay valid. The watermark is applied after the rotation.
+- **Source limits:** `SourceSizeValidator::assertFits()` checks `max_source_bytes`, `assertPixelsFit()` checks
+  `max_source_pixels` (default 64 MP) against width × height from the `pingImage()` the processor, the metadata reader
+  and the blur generator do before decoding — the blur generator pings for this reason alone, since a non-JPEG source
+  would otherwise be decoded in full at render time. The byte limit alone lets a ~15 MB 100 MP JPEG or a flat
+  30000×30000 PNG through, and above ImageMagick's memory policy the decode falls back to a disk-backed pixel cache
+  that takes seconds to minutes while holding the directory lock. Both throw `SourceTooLargeException`
+  (`RuntimeException`): the controller answers 413 without caching, the two render-time readers treat the source like
+  a missing one (no height, no blur, nothing written to disk). SVG sources get the byte check only.
 - The cache storage is the only owner of directory creation (race-condition-safe `!is_dir() && !mkdir() && !is_dir()`)
   and of permissions (`file_permissions`, `directory_permissions`, applied via `chmod()` after the atomic rename to fix
   the `0600` of `tempnam()`); the processor writes to the tmp path it is given and never touches either. Only on cache
@@ -333,7 +341,7 @@ once in `postMount()`) instead of signing URLs the SVG branch of the template ne
 - `blur` enabled: reads blur data URI via `BlurPlaceholderGenerator` (cache hit: ~5-10 μs file read, cache miss: ~50-100
   ms Imagick)
 - With warm cache, 50 images on a page ≈ 250-500 μs total I/O overhead
-- Missing source: on a `meta.json`/`blur.txt` cache miss both services call `ImageSourceInterface::exists()` first
+- Missing or oversized source: on a `meta.json`/`blur.txt` cache miss both services call `ImageSourceInterface::exists()` first
   (one call per uncached image — mind the cost with a remote source); when it returns false the page renders without
   `height` and blur, and the image URL returns 404 from the controller
 
@@ -422,7 +430,7 @@ the largest entry. Default `sizes` attribute: `100vw`.
 
 1. `CacheStorageInterface::has()` — cache check → hit is served without touching the source
 2. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing
-3. Copy source to temp file → `writeLocked()` to cache
+3. `SourceSizeValidator::assertFits()` (`max_source_bytes`) → 413; copy source to temp file → `writeLocked()` to cache
 4. `BinaryFileResponse` with immutable cache headers
 
 No HMAC, no Imagick processing.
@@ -435,7 +443,8 @@ No HMAC, no Imagick processing.
    the source
 4. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing (unknown `@source/` name included)
 5. `WatermarkRegistry::has()` — watermark profile check → 400 if unknown profile
-6. Process via `ImagickProcessor` to temp file → `writeLocked()` to cache
+6. Process via `ImagickProcessor` to temp file → `writeLocked()` to cache; `SourceTooLargeException`
+   (`max_source_bytes` before the read, `max_source_pixels` from the header ping) → 413, nothing cached
 7. `BinaryFileResponse` with `Cache-Control: public, max-age=31536000, immutable`
 
 ### FrankenPHP / worker mode
@@ -468,7 +477,8 @@ the sole author.
 
 ### PHPUnit
 
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`, `NamedImageSource`,
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `SourceSizeValidator`, `LocalFilesystemSource`,
+  `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
   `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
   `ImageUrlExtension`, `ImagickProcessor`
@@ -476,7 +486,8 @@ the sole author.
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
   `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
-  404), cached variant of a deleted source still served (cache before source, raster and SVG), avif/webp format
+  404), source above `max_source_pixels`/`max_source_bytes` (413, nothing cached), cached variant of a deleted source
+  still served (cache before source, raster and SVG), avif/webp format
   generation, watermark processing, SVG passthrough, named sources (`@reference/` cache
   directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
@@ -514,6 +525,7 @@ id_sign_image:
     lossless: false                     # true lossless encoding for webp/avif (ignored for jpeg/png)
     max_width: 4096                     # guard against memory exhaustion
     max_source_bytes: 20971520          # 20 MiB, 0 disables
+    max_source_pixels: 64000000         # 64 MP, width × height from the header before decoding, 0 disables
     file_permissions: 0660              # null = use umask default
     directory_permissions: 0770
     serve_mode: 'public'                # 'public' or 'controller'

@@ -40,6 +40,7 @@ services:
     IdSign\ImageBundle\Service\SourceSizeValidator:
         arguments:
             $maxBytes: '%id_sign_image.max_source_bytes%'
+            $maxPixels: '%id_sign_image.max_source_pixels%'
 
     IdSign\ImageBundle\Service\ImagickProcessor: ~
 

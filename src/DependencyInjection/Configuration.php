@@ -130,6 +130,11 @@ class Configuration implements ConfigurationInterface
                     ->min(0)
                     ->info('Maximum source file size in bytes. Protects against decompression bombs and large accidental uploads. 0 disables the check.')
                 ->end()
+                ->integerNode('max_source_pixels')
+                    ->defaultValue(64_000_000) // 64 MP: 48 MP phones and 61 MP cameras pass, 100 MP medium format needs a higher value
+                    ->min(0)
+                    ->info('Maximum source image area in pixels (width × height), read from the header before decoding. Catches decompression bombs that pass max_source_bytes: a 100 MP JPEG is ~15 MB but needs over 1 GB to decode. 0 disables the check.')
+                ->end()
                 ->variableNode('file_permissions')
                     ->defaultValue(0o660)
                     ->validate()
