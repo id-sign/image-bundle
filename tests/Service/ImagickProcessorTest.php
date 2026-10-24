@@ -31,7 +31,7 @@ class ImagickProcessorTest extends TestCase
             self::markTestSkipped('ext-imagick is not installed.');
         }
 
-        $this->processor = new ImagickProcessor(new SourceSizeValidator(0), null, 0o770);
+        $this->processor = new ImagickProcessor(new SourceSizeValidator(0));
     }
 
     protected function tearDown(): void
@@ -130,6 +130,34 @@ class ImagickProcessorTest extends TestCase
             self::assertNotFalse($size);
             self::assertSame($entry['width'], $size[0]);
         }
+    }
+
+    /**
+     * Shrink-on-load: a JPEG at least twice the output box is decoded at a DCT fraction of its size.
+     * The output must keep the exact dimensions of a full decode, and a rotated source must use the
+     * displayed (swapped) size for the proportional height — the same number ImageMetadataReader
+     * puts into <img height>.
+     *
+     * @return iterable<string, array{string, int, int, int}>
+     */
+    public static function shrinkOnLoadSources(): iterable
+    {
+        yield '512x512 → 128 (hint 256x256, decoded at 1/2)' => [self::FIXTURE, 128, 128, 128];
+        yield '100x75 → 40 (hint 80x60 within the source)' => [__DIR__.'/../Fixtures/test.jpg', 40, 40, 30];
+        yield '100x75 → 60 (source smaller than twice the box: no hint)' => [__DIR__.'/../Fixtures/test.jpg', 60, 60, 45];
+        yield 'rotated 40x30 EXIF 6 → 10 (displayed 30x40, hint in stored orientation)' => [__DIR__.'/../Fixtures/rotated.jpg', 10, 10, 13];
+    }
+
+    #[DataProvider('shrinkOnLoadSources')]
+    public function testJpegShrinkOnLoadKeepsOutputDimensions(string $source, int $width, int $expectedWidth, int $expectedHeight): void
+    {
+        $output = $this->tmpPath('webp');
+
+        $this->processor->process($source, $output, $width, null, null, 'webp', 80);
+
+        $size = getimagesize($output);
+        self::assertNotFalse($size);
+        self::assertSame([$expectedWidth, $expectedHeight], [$size[0], $size[1]]);
     }
 
     /**

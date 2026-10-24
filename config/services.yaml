@@ -41,10 +41,7 @@ services:
         arguments:
             $maxBytes: '%id_sign_image.max_source_bytes%'
 
-    IdSign\ImageBundle\Service\ImagickProcessor:
-        arguments:
-            $filePermissions: '%id_sign_image.file_permissions%'
-            $directoryPermissions: '%id_sign_image.directory_permissions%'
+    IdSign\ImageBundle\Service\ImagickProcessor: ~
 
     IdSign\ImageBundle\Service\ImageProcessorInterface:
         alias: IdSign\ImageBundle\Service\ImagickProcessor
@@ -53,19 +50,13 @@ services:
         arguments:
             $configuredFormats: '%id_sign_image.formats%'
 
+    # meta.json / blur.txt go through the CacheStorageInterface (atomic writes, permissions, directories).
     IdSign\ImageBundle\Service\BlurPlaceholderGenerator:
         arguments:
-            $cacheDirectory: '%id_sign_image.cache.path%'
             $blurSize: '%id_sign_image.blur.size%'
             $blurQuality: '%id_sign_image.blur.quality%'
-            $filePermissions: '%id_sign_image.file_permissions%'
-            $directoryPermissions: '%id_sign_image.directory_permissions%'
 
-    IdSign\ImageBundle\Service\ImageMetadataReader:
-        arguments:
-            $cacheDirectory: '%id_sign_image.cache.path%'
-            $filePermissions: '%id_sign_image.file_permissions%'
-            $directoryPermissions: '%id_sign_image.directory_permissions%'
+    IdSign\ImageBundle\Service\ImageMetadataReader: ~
 
     IdSign\ImageBundle\Service\SrcsetGenerator:
         arguments:

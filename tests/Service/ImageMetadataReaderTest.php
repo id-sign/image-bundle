@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Tests\Service;
 
+use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
@@ -23,9 +24,7 @@ class ImageMetadataReaderTest extends TestCase
         $this->reader = new ImageMetadataReader(
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             new SourceSizeValidator(0),
-            $this->cacheDir,
-            0o660,
-            0o770,
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
         );
     }
 
@@ -111,11 +110,21 @@ class ImageMetadataReaderTest extends TestCase
         self::assertSame([], array_diff((array) scandir($this->cacheDir), ['.', '..']));
     }
 
+    public function testEmptyOrCorruptMetaJsonIsTreatedAsMissAndRewritten(): void
+    {
+        // A reader that raced a non-atomic writer used to get '' here, json_decode() null and a warning.
+        mkdir($this->cacheDir.'/test.jpg', 0o775, true);
+        file_put_contents($this->cacheDir.'/test.jpg/meta.json', '');
+
+        self::assertSame(['width' => 100, 'height' => 75], $this->reader->getDimensions('test.jpg'));
+        self::assertSame('{"width":100,"height":75}', file_get_contents($this->cacheDir.'/test.jpg/meta.json'));
+    }
+
     public function testSourceAddedAfterMissIsReadAfterReset(): void
     {
         $sourceDir = sys_get_temp_dir().'/id_sign_image_meta_source_'.uniqid();
         mkdir($sourceDir, 0o775, true);
-        $reader = new ImageMetadataReader(new LocalFilesystemSource($sourceDir), new SourceSizeValidator(0), $this->cacheDir, null, 0o770);
+        $reader = new ImageMetadataReader(new LocalFilesystemSource($sourceDir), new SourceSizeValidator(0), new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770));
 
         try {
             self::assertSame(['width' => 0, 'height' => 0], $reader->getDimensions('late.jpg'));

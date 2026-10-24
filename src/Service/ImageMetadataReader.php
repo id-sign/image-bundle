@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Service;
 
+use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
@@ -15,9 +16,7 @@ class ImageMetadataReader implements ResetInterface
     public function __construct(
         private readonly ImageSourceInterface $imageSource,
         private readonly SourceSizeValidator $sourceSizeValidator,
-        private readonly string $cacheDirectory,
-        private readonly ?int $filePermissions,
-        private readonly int $directoryPermissions,
+        private readonly CacheStorageInterface $cacheStorage,
     ) {
     }
 
@@ -32,29 +31,25 @@ class ImageMetadataReader implements ResetInterface
             return $this->cache[$src];
         }
 
-        $cachePath = $this->getCachePath($src);
+        $cachePath = $src.'/meta.json';
+        $dimensions = $this->readCache($cachePath);
 
-        if (is_file($cachePath)) {
-            $data = file_get_contents($cachePath);
-            if (false !== $data) {
-                /** @var array{width: int, height: int} $dimensions */
-                $dimensions = json_decode($data, true);
-                $this->cache[$src] = $dimensions;
-
-                return $dimensions;
+        if (null === $dimensions) {
+            // Not written to disk, so a source uploaded later is picked up after reset().
+            if (!$this->imageSource->exists($src)) {
+                return $this->cache[$src] = ['width' => 0, 'height' => 0];
             }
+
+            $dimensions = $this->readDimensions($src);
+            $json = json_encode($dimensions, \JSON_THROW_ON_ERROR);
+
+            // Atomic (tmp file + rename) through the storage: a concurrent reader never sees a truncated file.
+            $this->cacheStorage->writeLocked($cachePath, static function (string $tmpPath) use ($json): void {
+                file_put_contents($tmpPath, $json);
+            });
         }
 
-        // Not written to disk, so a source uploaded later is picked up after reset().
-        if (!$this->imageSource->exists($src)) {
-            return $this->cache[$src] = ['width' => 0, 'height' => 0];
-        }
-
-        $dimensions = $this->readDimensions($src);
-        $this->writeCache($cachePath, json_encode($dimensions, \JSON_THROW_ON_ERROR));
-        $this->cache[$src] = $dimensions;
-
-        return $dimensions;
+        return $this->cache[$src] = $dimensions;
     }
 
     /**
@@ -99,6 +94,39 @@ class ImageMetadataReader implements ResetInterface
     }
 
     /**
+     * Read without the storage's TTL: dimensions change only when the source file is replaced, and
+     * that purges the whole source directory anyway. An invalid cache path ("..", empty segment) counts
+     * as a miss; an empty/corrupt file is deleted so that writeLocked() (which re-checks has() under the
+     * lock) rewrites it.
+     *
+     * @return array{width: int, height: int}|null
+     */
+    private function readCache(string $cachePath): ?array
+    {
+        try {
+            $path = $this->cacheStorage->getAbsolutePath($cachePath);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $data = json_decode((string) file_get_contents($path), true);
+        $width = \is_array($data) ? $data['width'] ?? null : null;
+        $height = \is_array($data) ? $data['height'] ?? null : null;
+
+        if (!\is_int($width) || !\is_int($height)) {
+            $this->cacheStorage->delete($cachePath);
+
+            return null;
+        }
+
+        return ['width' => $width, 'height' => $height];
+    }
+
+    /**
      * @return array{width: int, height: int}
      */
     private function readDimensions(string $src): array
@@ -137,25 +165,5 @@ class ImageMetadataReader implements ResetInterface
         $header = (string) file_get_contents($path, false, null, 0, 21);
 
         return 21 === \strlen($header) && 'VP8X' === substr($header, 12, 4) && 0 !== (\ord($header[20]) & 0x08);
-    }
-
-    private function getCachePath(string $src): string
-    {
-        return \sprintf('%s/%s/meta.json', $this->cacheDirectory, $src);
-    }
-
-    private function writeCache(string $path, string $content): void
-    {
-        $dir = \dirname($path);
-
-        if (!is_dir($dir) && !mkdir($dir, $this->directoryPermissions, true) && !is_dir($dir)) {
-            throw new \RuntimeException(\sprintf('Failed to create directory: %s', $dir));
-        }
-
-        file_put_contents($path, $content);
-
-        if (null !== $this->filePermissions) {
-            chmod($path, $this->filePermissions);
-        }
     }
 }

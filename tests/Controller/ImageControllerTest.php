@@ -36,7 +36,7 @@ class ImageControllerTest extends TestCase
         $sizeValidator = new SourceSizeValidator(0);
 
         $this->controller = new ImageController(
-            new ImagickProcessor($sizeValidator, 0o660, 0o770),
+            new ImagickProcessor($sizeValidator),
             new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $this->cachePathResolver,
             $signer,
@@ -197,7 +197,7 @@ class ImageControllerTest extends TestCase
         $sizeValidator = new SourceSizeValidator(0);
 
         $controller = new ImageController(
-            new ImagickProcessor($sizeValidator, 0o660, 0o770),
+            new ImagickProcessor($sizeValidator),
             new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $resolver,
             $signer,
@@ -315,7 +315,7 @@ class ImageControllerTest extends TestCase
         $sizeValidator = new SourceSizeValidator(0);
 
         $controller = new ImageController(
-            new ImagickProcessor($sizeValidator, 0o660, 0o770),
+            new ImagickProcessor($sizeValidator),
             new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
             $this->cachePathResolver,
             $signer,

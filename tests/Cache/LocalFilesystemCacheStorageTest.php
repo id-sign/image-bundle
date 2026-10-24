@@ -191,6 +191,15 @@ class LocalFilesystemCacheStorageTest extends TestCase
         self::assertSame('locked-payload', file_get_contents($this->cacheDir.'/ab/locked.webp'));
     }
 
+    public function testWriteLockedLeavesNoLockFiles(): void
+    {
+        $this->storage->writeLocked('ab/locked.webp', static function (string $tmpPath): void {
+            file_put_contents($tmpPath, 'payload');
+        });
+
+        self::assertSame(['locked.webp'], array_values(array_diff((array) scandir($this->cacheDir.'/ab'), ['.', '..'])));
+    }
+
     public function testWriteLockedSkipsWriterWhenAlreadyCached(): void
     {
         // Prime the cache

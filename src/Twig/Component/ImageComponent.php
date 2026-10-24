@@ -39,6 +39,7 @@ class ImageComponent
      */
     public ?bool $lossless = null;
 
+    private bool $svg = false;
     private int $resolvedQuality;
     private ?int $resolvedHeight = null;
     private ?int $processingHeight = null;
@@ -66,6 +67,7 @@ class ImageComponent
     public function postMount(): void
     {
         $this->src = SourcePath::normalize($this->src);
+        $this->svg = 'svg' === strtolower(pathinfo($this->src, \PATHINFO_EXTENSION));
 
         if ($this->width <= 0) {
             throw new \InvalidArgumentException(\sprintf('The "width" prop is required and must be > 0 on <twig:Image src="%s" />. It is the intrinsic width of the generated image file in pixels — pick the largest size the image will ever render at. See docs for guidance.', $this->src));
@@ -87,13 +89,13 @@ class ImageComponent
 
         $useAutoDimensions = $this->autoDimensions ?? $this->globalAutoDimensions;
 
-        if (null === $this->height && $useAutoDimensions && !$this->isSvg()) {
+        if (null === $this->height && $useAutoDimensions && !$this->svg) {
             $this->resolvedHeight = $this->metadataReader->calculateHeight($this->src, $this->width);
         } else {
             $this->resolvedHeight = $this->height;
         }
 
-        if ('scale-down' === $this->fit && !$this->isSvg()) {
+        if ('scale-down' === $this->fit && !$this->svg) {
             $sourceDimensions = $this->metadataReader->resolveScaleDownDimensions($this->src, $this->width, $this->resolvedHeight);
 
             if (null !== $sourceDimensions) {
@@ -107,7 +109,7 @@ class ImageComponent
 
     public function isSvg(): bool
     {
-        return 'svg' === strtolower(pathinfo($this->src, \PATHINFO_EXTENSION));
+        return $this->svg;
     }
 
     #[ExposeInTemplate('resolvedHeight')]
@@ -127,6 +129,12 @@ class ImageComponent
     #[ExposeInTemplate('sources')]
     public function getSources(): array
     {
+        // ux-twig-component evaluates every exposed method eagerly, also for the SVG branch of the
+        // template, which reads neither sources nor fallbackSrc — skip the signing work there.
+        if ($this->svg) {
+            return [];
+        }
+
         $sources = [];
 
         foreach ($this->formats as $format) {
@@ -170,6 +178,10 @@ class ImageComponent
     #[ExposeInTemplate('fallbackSrc')]
     public function getFallbackSrc(): string
     {
+        if ($this->svg) {
+            return '';
+        }
+
         $cachePath = $this->cachePathResolver->resolve(
             $this->src,
             $this->width,
@@ -193,7 +205,7 @@ class ImageComponent
     #[ExposeInTemplate('showBlur')]
     public function getShowBlur(): bool
     {
-        return !$this->isSvg() && ($this->blur || $this->blurEnabled);
+        return !$this->svg && ($this->blur || $this->blurEnabled);
     }
 
     #[ExposeInTemplate('blurDataUri')]

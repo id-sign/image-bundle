@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Tests\Service;
 
+use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Service\BlurPlaceholderGenerator;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
@@ -30,11 +31,9 @@ class BlurPlaceholderGeneratorTest extends TestCase
         $generator = new BlurPlaceholderGenerator(
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             new SourceSizeValidator(0),
-            $this->cacheDir,
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770),
             10,
             30,
-            null,
-            0o770,
         );
 
         $dataUri = $generator->generate('rotated.jpg');
@@ -46,16 +45,32 @@ class BlurPlaceholderGeneratorTest extends TestCase
         self::assertGreaterThan(10, $imagick->getImageHeight());
     }
 
+    public function testEmptyBlurTxtIsTreatedAsMissAndRewritten(): void
+    {
+        mkdir($this->cacheDir.'/rotated.jpg', 0o775, true);
+        touch($this->cacheDir.'/rotated.jpg/blur.txt');
+        $generator = new BlurPlaceholderGenerator(
+            new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+            new SourceSizeValidator(0),
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770),
+            10,
+            30,
+        );
+
+        $dataUri = $generator->generate('rotated.jpg');
+
+        self::assertStringStartsWith('data:image/jpeg;base64,', $dataUri);
+        self::assertSame($dataUri, file_get_contents($this->cacheDir.'/rotated.jpg/blur.txt'));
+    }
+
     public function testMissingSourceYieldsEmptyPlaceholderWithoutCacheWrite(): void
     {
         $generator = new BlurPlaceholderGenerator(
             new LocalFilesystemSource(__DIR__.'/../Fixtures'),
             new SourceSizeValidator(0),
-            $this->cacheDir,
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770),
             10,
             30,
-            null,
-            0o770,
         );
 
         self::assertSame('', $generator->generate('missing.jpg'));

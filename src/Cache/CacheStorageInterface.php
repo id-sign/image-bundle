@@ -22,10 +22,10 @@ interface CacheStorageInterface
     public function write(string $cachePath, string $sourcePath): void;
 
     /**
-     * Acquire a per-variant lock, re-check cache, and invoke $writer to produce the file
-     * if still missing. Protects against thundering herd — N concurrent requests for the
+     * Acquire a lock on the variant's directory, re-check cache, and invoke $writer to produce the
+     * file if still missing. Protects against thundering herd — N concurrent requests for the
      * same uncached variant cause only one write; others block on the lock and re-serve
-     * the produced file on retry.
+     * the produced file on retry. Also used for meta.json and blur.txt, so they are written atomically.
      *
      * Implementations may skip the lock if the underlying backend does not support it
      * cheaply (e.g. a remote-storage backend may accept best-effort concurrent writes).

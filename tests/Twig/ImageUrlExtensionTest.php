@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Tests\Twig;
 
 use IdSign\ImageBundle\Cache\CachePathResolver;
+use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
@@ -221,7 +222,7 @@ class ImageUrlExtensionTest extends TestCase
         $cacheDir = sys_get_temp_dir().'/id_sign_image_url_test_'.uniqid();
         $extension = new ImageUrlExtension(
             $this->createUrlGenerator(),
-            new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../Fixtures'), new SourceSizeValidator(0), $cacheDir, null, 0o770),
+            new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../Fixtures'), new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770)),
             $this->requestStack,
             80,
             null,

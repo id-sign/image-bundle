@@ -59,7 +59,8 @@ class CachePathResolver
      */
     public static function encodeForUrl(string $path): string
     {
-        return implode('/', array_map('rawurlencode', explode('/', $path)));
+        // One C-level pass over the string; only the slashes rawurlencode() turned into %2F come back.
+        return str_replace('%2F', '/', rawurlencode($path));
     }
 
     /**
