@@ -367,6 +367,9 @@ handle /_image/* {
 }
 ```
 
+FrankenPHP needs no extra configuration: `php_server` serves existing files from the web root before handing the
+request to PHP (its built-in `try_files {path} {path}/index.php index.php`), and `@` in the URL (`%40`) works.
+
 ### Controller mode
 
 Every image request goes through PHP. Enables TTL-based cache invalidation -- expired variants are regenerated on the

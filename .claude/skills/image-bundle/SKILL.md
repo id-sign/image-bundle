@@ -114,13 +114,16 @@ Pass `sizes` as any other attribute — it propagates to every `<source>` and `<
 Generates `<picture>` with `<source>` per configured format + `<img>` fallback:
 
 ```html
-
 <picture>
     <source type="image/avif" srcset="/_image/.../800_600_cover_80.avif 800w, ..." sizes="100vw">
     <source type="image/webp" srcset="/_image/.../800_600_cover_80.webp 800w, ..." sizes="100vw">
     <img src="/_image/.../800_600_cover_80.jpeg" width="800" height="600" alt="..." decoding="async"/>
 </picture>
 ```
+
+The fallback `<img>` keeps the source format: JPEG → JPEG, PNG → PNG, WebP → WebP, AVIF → AVIF; GIF, TIFF, HEIC, BMP and
+unknown extensions → JPEG. Converting a PNG source to WebP therefore also changes the fallback. Every variant is
+stripped of metadata — EXIF (orientation is applied first), ICC profile, comments.
 
 SVG files render as plain `<img>` — no processing, no `<picture>`. Served via `route_prefix` (copied to cache), no HMAC.
 
@@ -213,6 +216,10 @@ id_sign_image:
 ```nginx
 location /_image/ { try_files $uri @symfony; }
 ```
+
+FrankenPHP: `php_server` serves existing files from the web root before handing a request to PHP (its built-in
+`try_files {path} {path}/index.php index.php`), and `@` in the URL (`%40`) works, so nothing has to be configured.
+Caddy with PHP-FPM: `handle /_image/* { try_files {path}; php_fastcgi … }`.
 
 **Controller:** Every request through PHP. Enables TTL-based invalidation and access control. Works with
 `X-Accel-Redirect`/`X-Sendfile` out of the box: set `framework.trust_x_sendfile_type_header` and the web server mapping
@@ -321,3 +328,10 @@ $cacheStorage->deleteBySource('uploads/2024');        // everything below a dire
 ```
 
 Call it whenever a source image is replaced or deleted — cached variants are served without consulting the source.
+
+## Upgrading from v0.3.0 or earlier
+
+See "Upgrading from v0.3.0 or earlier" in the bundle README. In short: a leading `@` in `src` now selects a named source
+(rename a `data/@dir` directory or register it as a source of that name), default `device_sizes` gained `320` and `480`
+(a one-off wave of new variants), oversized sources answer `413` instead of a server error, and `*.lock` files left by
+older versions are unused — the next `image:purge --force` removes them.
