@@ -48,21 +48,33 @@ class ImagickProcessor implements ImageProcessorInterface
             }
 
             $imagick->readImage($sourcePath);
-            ExifOrientation::autoRotate($imagick);
+
+            // EXIF rotation is applied after the fit, on the small output rather than the decoded source
+            // (~136 ms per variant for a 24 MP non-JPEG source). Until then the pixels are in the stored
+            // orientation, so a quarter turn swaps the fit box; origWidth/origHeight stay displayed sizes.
+            $orientation = $imagick->getImageOrientation();
+            $quarterTurn = ExifOrientation::isQuarterTurn($imagick);
 
             // With shrink-on-load the decoded size is a DCT fraction of the source; keep the real size
             // so proportional heights match ImageMetadataReader (and its <img height>) to the pixel.
-            [$origWidth, $origHeight] = null !== $shrink
-                ? [$shrink['width'], $shrink['height']]
-                : [$imagick->getImageWidth(), $imagick->getImageHeight()];
+            [$origWidth, $origHeight] = match (true) {
+                null !== $shrink => [$shrink['width'], $shrink['height']],
+                $quarterTurn => [$imagick->getImageHeight(), $imagick->getImageWidth()],
+                default => [$imagick->getImageWidth(), $imagick->getImageHeight()],
+            };
             $targetHeight = $height ?? $this->proportionalHeight($origWidth, $origHeight, $width);
 
+            [$fitWidth, $fitHeight] = $quarterTurn ? [$targetHeight, $width] : [$width, $targetHeight];
+            [$storedWidth, $storedHeight] = $quarterTurn ? [$origHeight, $origWidth] : [$origWidth, $origHeight];
+
             match ($fit) {
-                'cover' => $this->fitCover($imagick, $width, $targetHeight),
-                'contain' => $this->fitContain($imagick, $width, $targetHeight),
-                'scale-down' => $this->fitScaleDown($imagick, $width, $targetHeight, $origWidth, $origHeight),
-                default => $this->fitExact($imagick, $width, $targetHeight),
+                'cover' => $this->fitCover($imagick, $fitWidth, $fitHeight),
+                'contain' => $this->fitContain($imagick, $fitWidth, $fitHeight),
+                'scale-down' => $this->fitScaleDown($imagick, $fitWidth, $fitHeight, $storedWidth, $storedHeight),
+                default => $this->fitExact($imagick, $fitWidth, $fitHeight),
             };
+
+            ExifOrientation::applyOrientation($imagick, $orientation);
 
             if (null !== $watermark) {
                 $this->applyWatermark($imagick, $watermark);
