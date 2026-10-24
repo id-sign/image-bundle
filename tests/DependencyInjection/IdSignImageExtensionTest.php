@@ -38,16 +38,16 @@ class IdSignImageExtensionTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $config
+     * @param array<string, mixed> ...$configs one entry per config file, merged in order like the kernel does
      */
-    private function load(array $config): ContainerBuilder
+    private function load(array ...$configs): ContainerBuilder
     {
         $container = new ContainerBuilder();
         $container->setParameter('kernel.project_dir', $this->projectDir);
         $container->setParameter('kernel.secret', 'test-secret');
         $container->register(RequestStack::class);
 
-        (new IdSignImageExtension())->load([$config], $container);
+        (new IdSignImageExtension())->load($configs, $container);
 
         return $container;
     }
@@ -84,6 +84,26 @@ class IdSignImageExtensionTest extends TestCase
 
         self::assertSame('%kernel.project_dir%/data', $container->getDefinition(LocalFilesystemSource::class)->getArgument('$basePath'));
         self::assertSame(['id_sign_image.source.reference'], array_keys($container->findTaggedServiceIds('id_sign_image.source')));
+    }
+
+    public function testLaterConfigFileAddingNamedSourcesKeepsTheConfiguredDefault(): void
+    {
+        // e.g. base file sets "default", a when@prod block only adds "reference"
+        $container = $this->load(
+            ['sources' => ['default' => '/srv/images']],
+            ['sources' => ['reference' => '/srv/reference']],
+        );
+
+        self::assertSame('/srv/images', $container->getDefinition(LocalFilesystemSource::class)->getArgument('$basePath'));
+        self::assertTrue($container->hasDefinition('id_sign_image.source.reference'));
+    }
+
+    public function testSourceNameWithTrailingNewlineIsRejected(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Source names must start with a letter');
+
+        $this->load(['sources' => ["reference\n" => '/srv/x']]);
     }
 
     public function testSourceNameWithDashIsKeptVerbatim(): void

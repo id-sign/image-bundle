@@ -20,6 +20,12 @@ class SourcePath
 
     public static function normalize(string $src): string
     {
-        return str_starts_with($src, self::DEFAULT_PREFIX) ? substr($src, \strlen(self::DEFAULT_PREFIX)) : $src;
+        // A loop keeps the function idempotent: entry points that call each other (image_url() →
+        // ImageUrlGenerator) normalize twice, and "@default/@default/x.jpg" must mean the same file everywhere.
+        while (str_starts_with($src, self::DEFAULT_PREFIX)) {
+            $src = substr($src, \strlen(self::DEFAULT_PREFIX));
+        }
+
+        return $src;
     }
 }

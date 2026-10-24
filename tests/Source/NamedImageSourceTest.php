@@ -96,6 +96,18 @@ class NamedImageSourceTest extends TestCase
         $this->source->getAbsolutePath('@default/test.jpg');
     }
 
+    public function testEmptySegmentAfterPrefixIsRejectedLikeTheCacheLayerDoes(): void
+    {
+        // LocalFilesystemSource alone would trim the extra slash and find the file, while the cache
+        // storage rejects "@reference//icons/ref.jpg" — the controller would then fail with 500, not 404.
+        self::assertFalse($this->source->exists('@reference//icons/ref.jpg'));
+        self::assertFalse($this->source->exists('@reference/'));
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->source->getAbsolutePath('@reference//icons/ref.jpg');
+    }
+
     public function testTraversalInsideNamedSourceIsRejected(): void
     {
         self::assertFalse($this->source->exists('@reference/../Fixtures/test.jpg'));

@@ -65,11 +65,15 @@ class CachePathResolver
     /**
      * Parse image parameters from a path (URL path after route prefix).
      *
+     * The pattern is anchored with the D modifier: a bare "$" also matches before a trailing newline, and
+     * the route's ".+" requirement lets "%0A" through — a known signed URL plus "%0A" would then parse and
+     * verify like the original and produce a second variant file with "\n" in its name.
+     *
      * @return array{src: string, signature: string, width: int, height: ?int, fit: ?string, quality: int, lossless: bool, watermark: ?string, format: string}|null
      */
     public function parse(string $path): ?array
     {
-        if (!preg_match('#^(.+)/([a-f0-9]{16})_(\d+)_(auto|\d+)_(none|cover|contain|scale-down)_(\d+)(_lossless)?(?:_wm-([a-zA-Z0-9_-]+))?\.(avif|webp|jpeg|jpg|png)$#', $path, $matches)) {
+        if (!preg_match('#^(.+)/([a-f0-9]{16})_(\d+)_(auto|\d+)_(none|cover|contain|scale-down)_(\d+)(_lossless)?(?:_wm-([a-zA-Z0-9_-]+))?\.(avif|webp|jpeg|jpg|png)$#D', $path, $matches)) {
             return null;
         }
 

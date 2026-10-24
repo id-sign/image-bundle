@@ -116,7 +116,10 @@ Lossless + watermark: `/_image/icons/logo.png/...._800_auto_none_100_lossless_wm
 SVG (no signature, no parameters): `/_image/icons/logo.svg`
 
 The URL path doubles as the filesystem cache path. `CachePathResolver` generates paths, and can also parse parameters
-back from a path (`resolve()` and `parse()`).
+back from a path (`resolve()` and `parse()`). The `parse()` pattern is anchored with the `D` modifier: a bare `$` also
+matches before a trailing newline, and the route's `.+` requirement lets `%0A` through — a known signed URL plus `%0A`
+would otherwise parse and verify like the original and write a second variant file with `\n` in its name (2× CPU and
+disk per public URL).
 
 Source path (`src`) is the first path segment — this means all cached data for a source image (variants, `meta.json`,
 `blur.txt`) live under the same directory prefix. `deleteBySource('uploads/photo.jpg')` = delete the
@@ -125,7 +128,11 @@ cache were stored elsewhere, `deleteBySource()` would need to know about and cle
 cached as a single file at `{src}` (no variants directory), so `deleteBySource('icons/logo.svg')` deletes the file
 directly. The deletion is recursive, so a directory prefix works too: `deleteBySource('uploads/2024')` or
 `deleteBySource('@reference')` removes every variants directory below it — that is what `image:purge @reference --force`
-relies on (the dry run counts the same subtree).
+relies on. `rmdir()` failures are ignored on purpose: a directory that a concurrent request refilled with a fresh
+variant after its old files were unlinked must stay. `image:purge <src>` validates `src` through
+`CacheStorageInterface::getAbsolutePath()` before counting or deleting, so the dry run reports exactly what `--force`
+deletes and never walks outside the cache directory (`..`, `.` or an empty path — e.g. `@default/` normalized — exit
+with an error).
 
 #### Image source abstraction
 
@@ -140,7 +147,8 @@ about sources, and `@reference/logo.png` and `logo.png` can never share a cache 
 
 `SourcePath::normalize()` strips `@default/` at the four entry points where `src` comes from user code
 (`ImageComponent::postMount()`, `ImageUrlExtension::imageUrl()`, `ImageUrlGenerator::generate()`,
-`PurgeCacheCommand`), so `@default/x.jpg` and `x.jpg` yield one URL and one cache directory. `NamedImageSource`
+`PurgeCacheCommand`), so `@default/x.jpg` and `x.jpg` yield one URL and one cache directory. It strips in a loop, so it
+is idempotent — `image_url()` normalizes and `ImageUrlGenerator::generate()` normalizes again. `NamedImageSource`
 deliberately rejects `@default/` and unknown names: `exists()` returns false, `getAbsolutePath()` throws
 `UnknownImageSourceException` (an `InvalidArgumentException`, same contract as `..`; `forDefaultPrefix()` carries a
 message pointing to `SourcePath::normalize()` instead of "unknown source"). An unknown source name therefore
@@ -150,15 +158,19 @@ signed URL returns 403 because the signature covers a different string).
 Configuration: `sources: {name: absolute path}`. `Configuration` validates names against `[A-Za-z][A-Za-z0-9_-]*`
 (the leading letter also rejects the integer keys of a YAML list written where a map was expected), requires absolute
 paths (`/…`, `%param%…` or a Windows drive — a relative path would resolve against the CWD, which differs between web
-server and console) and keeps keys verbatim (`normalizeKeys(false)`, the name ends up in URLs). `IdSignImageExtension`
-adds `default: Configuration::DEFAULT_SOURCE_PATH` (`%kernel.project_dir%/data`, the only place that literal lives)
-when missing, sets `$basePath` of the `LocalFilesystemSource` service from `sources.default` (`services.yaml` declares
-the service without arguments; an application-level override of that definition still wins, as before 0.4), and
-registers every other source as `id_sign_image.source.{name}` (`LocalFilesystemSource`) tagged `id_sign_image.source`.
-Custom implementations plug in through the same tag; a custom default re-points the `id_sign_image.source.default`
-alias. `..` protection lives in each `LocalFilesystemSource`, so it applies inside every source. `$default` in
-`NamedImageSource` must stay explicitly bound in `services.yaml` — autowiring by type would resolve to the interface
-alias, i.e. to the composite itself.
+server and console) and keeps keys verbatim (`normalizeKeys(false)`, the name ends up in URLs). It also adds
+`default: Configuration::DEFAULT_SOURCE_PATH` (`%kernel.project_dir%/data`, the only place that literal lives) when
+missing, as a `validate()->always()` rule: validation runs on the merged value of all config files, whereas a
+`beforeNormalization()` default would let a `when@prod` block that only adds named sources reset the base file's
+default. `IdSignImageExtension` sets `$basePath` of the `LocalFilesystemSource` service from `sources.default`
+(`services.yaml` declares the service without arguments; an application-level override of that definition still wins,
+as before 0.4) and registers every other source as `id_sign_image.source.{name}` (`LocalFilesystemSource`) tagged
+`id_sign_image.source`. Custom implementations plug in through the same tag; a custom default re-points the
+`id_sign_image.source.default` alias. Path-segment validation (`..`, `.`, empty) lives in each `LocalFilesystemSource`
+and in the cache storage, so it applies inside every source; `NamedImageSource` additionally refuses `@name/` and
+`@name//x` — the inner source would trim the slash and report a file the cache layer rejects, and the controller would
+answer 500 instead of 404. `$default` in `NamedImageSource` must stay explicitly bound in `services.yaml` — autowiring
+by type would resolve to the interface alias, i.e. to the composite itself.
 
 Performance: a warm-cache render costs one `str_starts_with` per image (normalization); the prefix split (~0.5 μs,
 about one HMAC) runs only where `exists()`/`getAbsolutePath()` were already called — on cache miss. Public-mode cache
@@ -432,7 +444,7 @@ the sole author.
   `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), avif/webp format generation, watermark processing, SVG passthrough, named sources (`@reference/` cache
-  directory, unknown source 404, `@default/` 403/404)
+  directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity
   tests), `tests/Fixtures/rotated.jpg` (stored 40x30 with EXIF Orientation=6, displayed 30x40),

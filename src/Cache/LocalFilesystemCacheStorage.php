@@ -32,8 +32,8 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     public function getAbsolutePath(string $cachePath): string
     {
         foreach (explode('/', trim($cachePath, '/')) as $segment) {
-            if ('' === $segment || '..' === $segment) {
-                throw new \InvalidArgumentException(\sprintf('Invalid cache path segment (empty or "..") in: %s', $cachePath));
+            if ('' === $segment || '.' === $segment || '..' === $segment) {
+                throw new \InvalidArgumentException(\sprintf('Invalid cache path segment (empty, "." or "..") in: %s', $cachePath));
             }
         }
 
@@ -187,7 +187,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
         // A variants directory, or a directory prefix such as "uploads" or "@reference" — the whole
         // subtree goes, including the variants directories of every source image below it.
         $count = $this->deleteContents($path);
-        rmdir($path);
+        @rmdir($path);
 
         return $count;
     }
@@ -203,6 +203,9 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
 
     /**
      * Deletes everything below $dir (not $dir itself) and returns the number of files removed.
+     *
+     * rmdir() failures are deliberately ignored: a concurrent request may have written a fresh variant
+     * into a directory after its old files were unlinked, and that directory must stay.
      */
     private function deleteContents(string $dir): int
     {
@@ -218,7 +221,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
                 unlink($file->getPathname());
                 ++$count;
             } elseif ($file->isDir()) {
-                rmdir($file->getPathname());
+                @rmdir($file->getPathname());
             }
         }
 

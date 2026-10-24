@@ -126,6 +126,14 @@ class CachePathResolverTest extends TestCase
         self::assertNull($this->resolver->parse(''));
     }
 
+    public function testParseRejectsTrailingNewline(): void
+    {
+        $path = $this->resolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+
+        self::assertNotNull($this->resolver->parse($path));
+        self::assertNull($this->resolver->parse($path."\n"), 'a bare "$" anchor would accept "%0A" and create a second variant file');
+    }
+
     public function testParseRejectsUnknownFormat(): void
     {
         // Regex restricts format to the supported set — an unsupported extension must
