@@ -223,6 +223,22 @@ class ImagickProcessorTest extends TestCase
         self::assertEqualsWithDelta([255, 0, 0], $result->exportImagePixels(90, 65, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
     }
 
+    /**
+     * adobergb-r03.jpg has no profile but EXIF InteropIndex=R03 (a DCF camera in Adobe RGB mode): the variant must
+     * carry the sRGB values rgb(0,200,67) for the stored rgb(100,199,80). The tag is read before the fit, because
+     * thumbnailImage() drops the EXIF block.
+     */
+    public function testCameraJpegInAdobeRgbModeIsConvertedToSrgb(): void
+    {
+        $output = $this->tmpPath('png');
+
+        $this->processor->process(__DIR__.'/../Fixtures/adobergb-r03.jpg', $output, 32, null, null, 'png', 80);
+
+        $result = new \Imagick($output);
+        self::assertEqualsWithDelta([0, 200, 67], $result->exportImagePixels(16, 12, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
+        self::assertSame([], $result->getImageProfiles('icc', false));
+    }
+
     public function testSrgbTaggedSourceKeepsItsColours(): void
     {
         $output = $this->tmpPath('png');

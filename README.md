@@ -188,13 +188,18 @@ Output:
 
 Every variant is written in sRGB without metadata. A source with an embedded ICC profile — Display P3 (every iPhone
 photo), Adobe RGB, a monitor profile in a screenshot, a CMYK press profile — is converted to sRGB through that profile
-before it is stripped, so the colours stay as intended; a source without a profile is taken as sRGB. A watermark image
-with a profile is converted the same way before it is composited. EXIF orientation is applied before the EXIF block
-is dropped. The conversion runs on the resized output (about 40 ms for 800 × 600) and only when a variant is
+before it is stripped, so the colours stay as intended; a source without a profile is taken as sRGB — except a camera
+JPEG shot in Adobe RGB mode, which carries no profile but says so in EXIF (InteroperabilityIndex `R03`) and is
+converted as Adobe RGB. A watermark image with a profile is converted the same way before it is composited. EXIF
+orientation is applied before the EXIF block is dropped. The conversion runs on the resized output (about 40 ms for 800 × 600) and only when a variant is
 generated; a source tagged with one of the sRGB profile variants (camera and Photoshop JPEGs) is recognised in about
 2 ms and not converted. A profile that cannot be converted (truncated, or not matching the image) is logged as a
 warning and stripped without conversion. The sRGB target is the ICC's `sRGB2014.icc`, bundled in `resources/`; the
 bundle refuses to build the container when that file is missing.
+
+Not handled, and taken as sRGB like browsers do: PNG files that declare their primaries only through `cHRM`/`gAMA`
+chunks, and AVIF/HEIC files whose colour space is given only by an `nclx` box without an ICC profile (`avifenc`,
+Pixelmator, Affinity; iPhone HEIC embeds a profile and is converted).
 
 ## Component attributes
 
@@ -758,9 +763,10 @@ decoded. Raise it or set it to `0` if you serve larger sources (medium-format ph
 source above `max_source_bytes` or `max_source_pixels` now answers `413` instead of a server error, and a page that
 renders it is no longer broken: it renders without `height` and blur, like for a missing source.
 
-Sources with an embedded non-sRGB ICC profile — Display P3 (every iPhone photo), Adobe RGB, CMYK — are now converted
-to sRGB before the profile is stripped. Earlier versions stripped the profile without converting, so their variants
-and blur placeholders of such sources have washed-out colours. The URLs are unchanged, so purge them:
+Sources with an embedded non-sRGB ICC profile — Display P3 (every iPhone photo), Adobe RGB, CMYK — and camera JPEGs
+in Adobe RGB mode (EXIF `R03`, no profile) are now converted to sRGB before the metadata is stripped. Earlier
+versions stripped the profile without converting, so their variants and blur placeholders of such sources have
+washed-out colours. The URLs are unchanged, so purge them:
 `image:purge <src> --force` per source, or `image:purge --force` for everything.
 
 ### Upgrading from v0.2.4 or earlier
@@ -884,6 +890,7 @@ MIT
 
 `resources/sRGB2014.icc` is the International Color Consortium's sRGB profile (Copyright International Color
 Consortium, 2015), distributed under the ICC's terms: it may be copied, distributed, embedded, made, used, and sold
-without restriction; altered versions must have the original identification and copyright information removed. The
-ICC profiles embedded in the test fixtures `tests/Fixtures/p3.jpg` and `tests/Fixtures/srgb-tagged.jpg` come from
+without restriction; altered versions must have the original identification and copyright information removed.
+`resources/AdobeCompat-v2.icc` (an Adobe RGB-compatible profile) and the ICC profiles embedded in the test fixtures
+`tests/Fixtures/p3.jpg` and `tests/Fixtures/srgb-tagged.jpg` come from
 [Compact-ICC-Profiles](https://github.com/saucecontrol/Compact-ICC-Profiles) (CC0 1.0).

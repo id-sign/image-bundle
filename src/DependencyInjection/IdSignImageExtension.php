@@ -31,8 +31,10 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
 
         // Fail at container build, not at the first cache miss on a profiled source: a deployment that ships the
         // package without resources/ (export-ignore, vendor pruning) would otherwise answer 500 for iPhone photos.
-        if (!is_readable(ColorProfile::SRGB_PROFILE)) {
-            throw new \RuntimeException(\sprintf('The bundled sRGB profile "%s" is missing or unreadable; install id-sign/image-bundle with its resources/ directory.', ColorProfile::SRGB_PROFILE));
+        foreach ([ColorProfile::SRGB_PROFILE, ColorProfile::ADOBE_RGB_PROFILE] as $profile) {
+            if (!is_readable($profile)) {
+                throw new \RuntimeException(\sprintf('The bundled ICC profile "%s" is missing or unreadable; install id-sign/image-bundle with its resources/ directory.', $profile));
+            }
         }
 
         $container->setParameter('id_sign_image.device_sizes', $config['device_sizes']);
