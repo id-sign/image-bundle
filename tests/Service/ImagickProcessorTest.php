@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Tests\Service;
 
 use IdSign\ImageBundle\Cache\CachePathResolver;
+use IdSign\ImageBundle\Service\ExifOrientation;
 use IdSign\ImageBundle\Service\ImagickProcessor;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
@@ -158,6 +159,65 @@ class ImagickProcessorTest extends TestCase
         $size = getimagesize($output);
         self::assertNotFalse($size);
         self::assertSame([$expectedWidth, $expectedHeight], [$size[0], $size[1]]);
+    }
+
+    /**
+     * The EXIF rotation runs after the fit. For the proportional resize the pixels must match rotating first
+     * (a 90° rotation is a lossless permutation and Lanczos is symmetric under it) up to the 8-bit rounding of
+     * the PNG round-trip, and the direction must be the displayed one: rotated.jpg stores a red top row and a
+     * blue bottom row with Orientation=6, so the displayed image has red on the right and blue on the left.
+     */
+    public function testRotationAfterResizeMatchesRotationBeforeResize(): void
+    {
+        $output = $this->tmpPath('png');
+        $this->processor->process(__DIR__.'/../Fixtures/rotated.jpg', $output, 20, null, null, 'png', 100);
+
+        $reference = new \Imagick(__DIR__.'/../Fixtures/rotated.jpg');
+        ExifOrientation::autoRotate($reference);
+        $reference->resizeImage(20, 27, \Imagick::FILTER_LANCZOS, 1);
+        $actual = new \Imagick($output);
+
+        try {
+            self::assertSame([20, 27], [$actual->getImageWidth(), $actual->getImageHeight()]);
+
+            $expected = $reference->exportImagePixels(0, 0, 20, 27, 'RGB', \Imagick::PIXEL_CHAR);
+            $pixels = $actual->exportImagePixels(0, 0, 20, 27, 'RGB', \Imagick::PIXEL_CHAR);
+            $maxDiff = max(array_map(static fn (int|float $a, int|float $b): int => (int) abs($a - $b), $expected, $pixels));
+            self::assertLessThanOrEqual(1, $maxDiff, 'rotate-after-resize must match rotate-before-resize up to 8-bit rounding');
+
+            $left = $actual->getImagePixelColor(0, 13)->getColor();
+            $right = $actual->getImagePixelColor(19, 13)->getColor();
+            self::assertGreaterThan(200, $right['r'], 'stored top row (red) must end up on the right');
+            self::assertGreaterThan(200, $left['b'], 'stored bottom row (blue) must end up on the left');
+        } finally {
+            $reference->clear();
+            $actual->clear();
+        }
+    }
+
+    /**
+     * @return iterable<string, array{string, ?int, ?string, int, int}>
+     */
+    public static function rotatedFits(): iterable
+    {
+        // rotated.jpg: stored 40x30, EXIF 6, displayed 30x40
+        yield 'cover 12x12' => ['cover', 12, 'cover', 12, 12];
+        yield 'contain 12x12 → 9x12' => ['contain', 12, 'contain', 9, 12];
+        yield 'scale-down 1200 keeps the source size' => ['scale-down', null, 'scale-down', 30, 40];
+        yield 'scale-down 12x12 → 9x12' => ['scale-down', 12, 'scale-down', 9, 12];
+    }
+
+    #[DataProvider('rotatedFits')]
+    public function testFitBoxIsSwappedForQuarterTurnSources(string $label, ?int $height, string $fit, int $expectedWidth, int $expectedHeight): void
+    {
+        $output = $this->tmpPath('png');
+        $width = null === $height ? 1200 : 12;
+
+        $this->processor->process(__DIR__.'/../Fixtures/rotated.jpg', $output, $width, $height, $fit, 'png', 100);
+
+        $size = getimagesize($output);
+        self::assertNotFalse($size);
+        self::assertSame([$expectedWidth, $expectedHeight], [$size[0], $size[1]], $label);
     }
 
     /**

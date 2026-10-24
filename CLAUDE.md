@@ -222,7 +222,13 @@ need anyway to avoid orphaned cache entries.
   upscale). The real, orientation-swapped source size from the ping feeds `proportionalHeight()`, so heights match
   `ImageMetadataReader` to the pixel. Other formats have no shrink-on-load and decode fully.
 - Autorotation from EXIF orientation data via `ExifOrientation` — the single rule also used by `ImageMetadataReader`
-  and `BlurPlaceholderGenerator`, so render-time dimensions and placeholders match the processed output
+  and `BlurPlaceholderGenerator`, so render-time dimensions and placeholders match the processed output. The processor
+  applies it **after the fit** (`applyOrientation()` with the orientation captured before): a quarter turn swaps the
+  fit box, the fit runs in the stored orientation and the 90° rotation — a lossless pixel permutation — touches only
+  the small output. Saves ~136 ms per variant on a 24 MP PNG/WebP/HEIC source (~6 ms on JPEG, where shrink-on-load
+  already decodes small). Output is pixel-identical for the proportional resize; `cover`/`contain` may differ from
+  rotate-first by ≤1/255 (integer crop offset, 16-bit intermediate rounding in `thumbnailImage`), far below encoder
+  noise, so cached variants stay valid. The watermark is applied after the rotation.
 - The cache storage is the only owner of directory creation (race-condition-safe `!is_dir() && !mkdir() && !is_dir()`)
   and of permissions (`file_permissions`, `directory_permissions`, applied via `chmod()` after the atomic rename to fix
   the `0600` of `tempnam()`); the processor writes to the tmp path it is given and never touches either. Only on cache
