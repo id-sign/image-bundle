@@ -190,7 +190,9 @@ Every variant is written in sRGB without metadata. A source with an embedded ICC
 photo), Adobe RGB, a monitor profile in a screenshot, a CMYK press profile — is converted to sRGB through that profile
 before it is stripped, so the colours stay as intended; a source without a profile is taken as sRGB. EXIF orientation
 is applied before the EXIF block is dropped. The conversion runs on the resized output (about 40 ms for 800 × 600)
-and only when a variant is generated. The sRGB target is the ICC's `sRGB2014.icc`, bundled in `resources/`.
+and only when a variant is generated; a source tagged with one of the sRGB profile variants (camera and Photoshop
+JPEGs) is recognised in about 2 ms and not converted. The sRGB target is the ICC's `sRGB2014.icc`, bundled in
+`resources/`.
 
 ## Component attributes
 
