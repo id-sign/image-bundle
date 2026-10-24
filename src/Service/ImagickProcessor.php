@@ -44,7 +44,7 @@ class ImagickProcessor implements ImageProcessorInterface
             // Header only (~0.04 ms): enforce the pixel limit before anything is decoded, and find out whether
             // this is a JPEG that can be decoded at a fraction of its size.
             $imagick->pingImage($sourcePath);
-            $this->sourceSizeValidator->assertPixelsFit($imagick->getImageWidth(), $imagick->getImageHeight(), $sourcePath);
+            $this->sourceSizeValidator->assertPingedFits($imagick, $sourcePath);
             $shrink = $this->shrinkOnLoad($imagick, $width, $height);
             $imagick->clear();
 
@@ -52,7 +52,9 @@ class ImagickProcessor implements ImageProcessorInterface
                 $imagick->setOption('jpeg:size', $shrink['hint']);
             }
 
-            $imagick->readImage($sourcePath);
+            // "[0]": the first frame only. readImage() would decode every frame of a GIF/APNG/animated WebP and leave
+            // the iterator on the last one; the variant is a single frame anyway, and the first one is the poster.
+            $imagick->readImage($sourcePath.'[0]');
             // Before the fit: thumbnailImage() drops the EXIF block this reads.
             ColorProfile::tagFromExif($imagick);
 

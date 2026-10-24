@@ -32,8 +32,8 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     public function getAbsolutePath(string $cachePath): string
     {
         foreach (explode('/', trim($cachePath, '/')) as $segment) {
-            if ('' === $segment || '.' === $segment || '..' === $segment) {
-                throw new \InvalidArgumentException(\sprintf('Invalid cache path segment (empty, "." or "..") in: %s', $cachePath));
+            if ('' === $segment || '.' === $segment || '..' === $segment || str_contains($segment, '\\')) {
+                throw new \InvalidArgumentException(\sprintf('Invalid cache path segment (empty, ".", ".." or containing "\\") in: %s', $cachePath));
             }
         }
 

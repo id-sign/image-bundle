@@ -49,10 +49,11 @@ class BlurPlaceholderGenerator implements ResetInterface
                 return $this->cache[$src] = '';
             }
 
-            // Atomic (tmp file + rename) through the storage: a concurrent reader never sees a truncated file.
-            $this->cacheStorage->writeLocked($cachePath, static function (string $tmpPath) use ($dataUri): void {
-                file_put_contents($tmpPath, $dataUri);
-            });
+            // Atomic through the storage (staged next to the target, then rename()): a concurrent reader never sees
+            // a truncated file. Deliberately without the directory lock, which the controller holds for the whole
+            // encode of a variant — a page render must not wait for that; two workers writing the same placeholder
+            // twice is harmless.
+            $this->cacheStorage->write($cachePath, self::stage($dataUri));
         }
 
         return $this->cache[$src] = $dataUri;
@@ -65,7 +66,7 @@ class BlurPlaceholderGenerator implements ResetInterface
 
     /**
      * Read without the storage's TTL (see ImageMetadataReader::readCache()). An invalid cache path counts
-     * as a miss; an empty/corrupt file is deleted so that writeLocked() rewrites it.
+     * as a miss; an empty/corrupt file is deleted and rewritten.
      */
     private function readCache(string $cachePath): ?string
     {
@@ -90,6 +91,19 @@ class BlurPlaceholderGenerator implements ResetInterface
         return $dataUri;
     }
 
+    /**
+     * A temp file with $content for CacheStorageInterface::write(), which moves it into the cache.
+     */
+    private static function stage(string $content): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'id_sign_image_');
+        if (false === $tmp || false === file_put_contents($tmp, $content)) {
+            throw new \RuntimeException('Failed to stage the blur placeholder for the cache.');
+        }
+
+        return $tmp;
+    }
+
     private function createBlurDataUri(string $src): string
     {
         $sourcePath = $this->imageSource->getAbsolutePath($src);
@@ -100,7 +114,7 @@ class BlurPlaceholderGenerator implements ResetInterface
         try {
             // Header only: a non-JPEG source is decoded in full below, so the pixel limit must be checked first.
             $imagick->pingImage($sourcePath);
-            $this->sourceSizeValidator->assertPixelsFit($imagick->getImageWidth(), $imagick->getImageHeight(), $sourcePath);
+            $this->sourceSizeValidator->assertPingedFits($imagick, $sourcePath);
             $imagick->clear();
 
             // jpeg:size hints libjpeg to decode at roughly this target, letting it use
@@ -108,7 +122,7 @@ class BlurPlaceholderGenerator implements ResetInterface
             // for non-JPEG inputs but harmless — Imagick silently ignores the hint.
             $hint = ($this->blurSize * 8).'x';
             $imagick->setOption('jpeg:size', $hint);
-            $imagick->readImage($sourcePath);
+            $imagick->readImage($sourcePath.'[0]'); // first frame only, see ImagickProcessor
             ColorProfile::tagFromExif($imagick);
             ExifOrientation::autoRotate($imagick);
             $imagick->thumbnailImage($this->blurSize, 0);

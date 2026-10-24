@@ -136,6 +136,13 @@ class LocalFilesystemCacheStorageTest extends TestCase
         $this->storage->getAbsolutePath('../escape.jpg');
     }
 
+    public function testGetAbsolutePathRejectsBackslashInSegment(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->storage->getAbsolutePath('..\\escape.jpg');
+    }
+
     public function testGetAbsolutePathRejectsDotSegment(): void
     {
         // deleteBySource('.') would otherwise wipe the whole cache and then fail on rmdir().

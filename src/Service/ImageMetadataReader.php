@@ -49,10 +49,11 @@ class ImageMetadataReader implements ResetInterface
 
             $json = json_encode($dimensions, \JSON_THROW_ON_ERROR);
 
-            // Atomic (tmp file + rename) through the storage: a concurrent reader never sees a truncated file.
-            $this->cacheStorage->writeLocked($cachePath, static function (string $tmpPath) use ($json): void {
-                file_put_contents($tmpPath, $json);
-            });
+            // Atomic through the storage (staged next to the target, then rename()): a concurrent reader never sees
+            // a truncated file. Deliberately without the directory lock, which the controller holds for the whole
+            // encode of a variant — a page render must not wait for that; two workers writing the same dimensions
+            // twice is harmless.
+            $this->cacheStorage->write($cachePath, self::stage($json));
         }
 
         return $this->cache[$src] = $dimensions;
@@ -102,8 +103,7 @@ class ImageMetadataReader implements ResetInterface
     /**
      * Read without the storage's TTL: dimensions change only when the source file is replaced, and
      * that purges the whole source directory anyway. An invalid cache path ("..", empty segment) counts
-     * as a miss; an empty/corrupt file is deleted so that writeLocked() (which re-checks has() under the
-     * lock) rewrites it.
+     * as a miss; an empty/corrupt file is deleted and rewritten.
      *
      * @return array{width: int, height: int}|null
      */
@@ -133,6 +133,19 @@ class ImageMetadataReader implements ResetInterface
     }
 
     /**
+     * A temp file with $content for CacheStorageInterface::write(), which moves it into the cache.
+     */
+    private static function stage(string $content): string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'id_sign_image_');
+        if (false === $tmp || false === file_put_contents($tmp, $content)) {
+            throw new \RuntimeException('Failed to stage the image metadata for the cache.');
+        }
+
+        return $tmp;
+    }
+
+    /**
      * @return array{width: int, height: int}
      */
     private function readDimensions(string $src): array
@@ -146,12 +159,12 @@ class ImageMetadataReader implements ResetInterface
             // pingImage reads only the header — orders of magnitude faster than new Imagick($path),
             // which decodes the full pixel buffer just to learn the dimensions.
             $imagick->pingImage($sourcePath);
-            $this->sourceSizeValidator->assertPixelsFit($imagick->getImageWidth(), $imagick->getImageHeight(), $sourcePath);
+            $this->sourceSizeValidator->assertPingedFits($imagick, $sourcePath);
 
             // ImageMagick's WebP coder returns from ping before it reads the EXIF chunk, so the orientation is lost.
             if ('WEBP' === $imagick->getImageFormat() && self::hasWebpExifFlag($sourcePath)) {
                 $imagick->clear();
-                $imagick->readImage($sourcePath);
+                $imagick->readImage($sourcePath.'[0]'); // first frame only, see ImagickProcessor
             }
 
             $width = $imagick->getImageWidth();

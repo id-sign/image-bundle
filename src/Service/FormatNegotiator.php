@@ -52,6 +52,18 @@ class FormatNegotiator
     }
 
     /**
+     * Whether the application would generate this format for this source: one of the configured formats, or the
+     * source's fallback. The signature does not cover the format (one HMAC serves every <source> of a width), so
+     * without this check a single signed URL would yield a variant per accepted extension — and PNG is lossless,
+     * a 3840 px photo as PNG is 20–30 MB on disk plus the encode.
+     */
+    public function isOffered(string $format, string $src): bool
+    {
+        return \in_array($format, $this->configuredFormats, true)
+            || $format === self::getFallbackFormat(pathinfo($src, \PATHINFO_EXTENSION));
+    }
+
+    /**
      * Get the web-safe fallback format for a source file extension.
      */
     public static function getFallbackFormat(string $sourceExtension): string

@@ -214,7 +214,7 @@ class ImageUrlExtensionTest extends TestCase
 
         $url = $extension->imageUrl('icons/logo.svg', 120, format: 'webp');
 
-        self::assertStringStartsWith('/_image/', $url);
+        self::assertSame('/_image/icons/logo.svg', $url, 'an SVG gets the passthrough URL, like <twig:Image>');
     }
 
     public function testAutoDimensionsWithMissingSourceKeepsAutoHeight(): void

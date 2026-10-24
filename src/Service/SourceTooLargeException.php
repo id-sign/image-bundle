@@ -19,4 +19,9 @@ class SourceTooLargeException extends \RuntimeException
     {
         return new self(\sprintf('Source image exceeds configured max_source_pixels: %dx%d = %d > %d (%s)', $width, $height, $width * $height, $max, $absolutePath));
     }
+
+    public static function forFrames(int $frames, int $pixels, int $max, string $absolutePath): self
+    {
+        return new self(\sprintf('Source image exceeds configured max_source_pixels: %d frames, %d pixels in total > %d (%s)', $frames, $pixels, $max, $absolutePath));
+    }
 }

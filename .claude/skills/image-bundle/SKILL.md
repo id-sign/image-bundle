@@ -127,7 +127,8 @@ converted to sRGB through its embedded ICC profile (Display P3 from iPhones, Ado
 except camera JPEGs in Adobe RGB mode, recognised by EXIF `R03`) and then stripped of all metadata — EXIF
 (orientation is applied first), ICC profile, comments.
 
-SVG files render as plain `<img>` — no processing, no `<picture>`. Served via `route_prefix` (copied to cache), no HMAC.
+SVG files render as plain `<img>` — no processing, no `<picture>`. Served via `route_prefix` (copied to cache), no HMAC;
+`image_url()` and `ImageUrlGenerator` return the same passthrough URL for `.svg`.
 
 ## Configuration
 
@@ -233,7 +234,9 @@ variants also expire with `cache.ttl`.
 
 ## URL security
 
-Raster URLs are HMAC-signed. Tampered parameters → 403. SVG URLs have no signature (no parameters to vary).
+Raster URLs are HMAC-signed. Tampered parameters → 403. The format is not signed, so the controller generates only the
+configured `formats` plus the source's fallback format; other extensions → 404. SVG URLs have no signature (no
+parameters to vary).
 
 URL format: `/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}`
 
@@ -244,8 +247,10 @@ accessible**. Any file under any of them is readable by anyone who knows (or gue
 `sources` publishes it. For access control, use `serve_mode: controller` + Symfony firewall in front of the bundle
 route; `try_files` in public mode bypasses Symfony security.
 
-Path segments `..`, `.` and empty are rejected; symlinks inside the source tree ARE followed (admin's decision). Audit
-`find data/ -type l` if you don't want that.
+Path segments `..`, `.`, empty and any containing `\` are rejected; symlinks inside the source tree ARE followed
+(admin's decision). Audit `find data/ -type l` if you don't want that. Per-image authorization belongs in front of the
+bundle route (firewall, `IsGranted`, request listener) — a custom `ImageSourceInterface` cannot enforce it, cached
+variants are served without consulting the source.
 
 ### Decompression bombs
 
@@ -254,10 +259,11 @@ oversized sources before Imagick decodes anything. The image URL answers `413`; 
 `height` and no blur placeholder, like for a missing source. Raise `max_source_pixels` (or set `0`) for medium-format
 photography. Still configure ImageMagick's `policy.xml` — the bundle is not a substitute for it.
 
-### SVG XSS in public mode
+### SVG XSS
 
-In public mode the web server serves cached SVGs directly — the bundle can't set CSP headers. Add this to nginx/Apache
-if source directory can receive user-uploaded SVG:
+The bundle sends SVG as `image/svg+xml` and adds no security headers; add them on the web server in both serve modes
+(public: PHP is not involved; controller: the web server still sees the URL). Match case-insensitively (`logo.SVG` is
+served as SVG too). nginx:
 
 ```nginx
 location ~* ^/_image/.+\.svg$ {

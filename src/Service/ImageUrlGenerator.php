@@ -32,6 +32,12 @@ class ImageUrlGenerator
     ): string {
         $src = SourcePath::normalize($src);
 
+        // Like <twig:Image>: an SVG is served as-is, there is no variant to sign. A signed raster URL would make the
+        // controller rasterize an untrusted SVG, and its variants directory would collide with the passthrough file.
+        if (SourcePath::isSvg($src)) {
+            return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($src);
+        }
+
         return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark, $lossless));
     }
 

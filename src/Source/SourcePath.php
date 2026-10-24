@@ -28,4 +28,14 @@ class SourcePath
 
         return $src;
     }
+
+    /**
+     * SVG sources are served as-is under route_prefix — no variants, no signature. One rule for the component,
+     * image_url(), ImageUrlGenerator and the controller, so a signed raster URL for an .svg is never produced and
+     * never processed.
+     */
+    public static function isSvg(string $src): bool
+    {
+        return 'svg' === strtolower(pathinfo($src, \PATHINFO_EXTENSION));
+    }
 }
