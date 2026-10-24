@@ -16,6 +16,9 @@ class ColorProfileTest extends TestCase
     /** Same pixels, tagged with a compact sRGB profile. */
     private const SRGB_TAGGED = __DIR__.'/../Fixtures/srgb-tagged.jpg';
 
+    /** Same pixels, no profile, EXIF InteropIndex=R03 (a DCF camera in Adobe RGB mode) — rgb(0,200,67) in sRGB. */
+    private const ADOBE_RGB_R03 = __DIR__.'/../Fixtures/adobergb-r03.jpg';
+
     protected function setUp(): void
     {
         if (!class_exists(\Imagick::class)) {
@@ -150,6 +153,34 @@ class ColorProfileTest extends TestCase
         $this->expectException(\ImagickException::class);
 
         ColorProfile::isSrgb(str_repeat('x', 300));
+    }
+
+    public function testCameraJpegInAdobeRgbModeIsTaggedFromExifAndConverted(): void
+    {
+        $imagick = new \Imagick(self::ADOBE_RGB_R03);
+        self::assertSame([], $imagick->getImageProfiles('icc', false));
+
+        ColorProfile::tagFromExif($imagick);
+        self::assertSame(['icc'], $imagick->getImageProfiles('icc', false));
+
+        ColorProfile::normalizeToSrgb($imagick);
+        self::assertEqualsWithDelta([0, 200, 67], $imagick->exportImagePixels(32, 24, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
+    }
+
+    public function testTagFromExifLeavesOtherImagesAlone(): void
+    {
+        $profiled = new \Imagick(self::P3);
+        $before = $profiled->getImageProfiles('icc', true);
+        ColorProfile::tagFromExif($profiled);
+        self::assertSame($before, $profiled->getImageProfiles('icc', true), 'an existing profile wins over EXIF');
+
+        $noExif = new \Imagick(__DIR__.'/../Fixtures/detailed.jpg');
+        ColorProfile::tagFromExif($noExif);
+        self::assertSame([], $noExif->getImageProfiles('icc', false));
+
+        $exifWithoutInterop = new \Imagick(__DIR__.'/../Fixtures/rotated.jpg');
+        ColorProfile::tagFromExif($exifWithoutInterop);
+        self::assertSame([], $exifWithoutInterop->getImageProfiles('icc', false));
     }
 
     public function testBundledProfileIsTheIccSrgb2014(): void

@@ -123,8 +123,9 @@ Generates `<picture>` with `<source>` per configured format + `<img>` fallback:
 
 The fallback `<img>` keeps the source format: JPEG → JPEG, PNG → PNG, WebP → WebP, AVIF → AVIF; GIF, TIFF, HEIC, BMP and
 unknown extensions → JPEG. Converting a PNG source to WebP therefore also changes the fallback. Every variant is
-converted to sRGB through its embedded ICC profile (Display P3 from iPhones, Adobe RGB, CMYK; no profile = sRGB) and
-then stripped of all metadata — EXIF (orientation is applied first), ICC profile, comments.
+converted to sRGB through its embedded ICC profile (Display P3 from iPhones, Adobe RGB, CMYK; no profile = sRGB,
+except camera JPEGs in Adobe RGB mode, recognised by EXIF `R03`) and then stripped of all metadata — EXIF
+(orientation is applied first), ICC profile, comments.
 
 SVG files render as plain `<img>` — no processing, no `<picture>`. Served via `route_prefix` (copied to cache), no HMAC.
 

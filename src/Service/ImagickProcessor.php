@@ -53,6 +53,8 @@ class ImagickProcessor implements ImageProcessorInterface
             }
 
             $imagick->readImage($sourcePath);
+            // Before the fit: thumbnailImage() drops the EXIF block this reads.
+            ColorProfile::tagFromExif($imagick);
 
             // EXIF rotation is applied after the fit, on the small output rather than the decoded source
             // (~136 ms per variant for a 24 MP non-JPEG source). Until then the pixels are in the stored

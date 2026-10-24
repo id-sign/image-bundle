@@ -26,7 +26,38 @@ final class ColorProfile
      */
     public const SRGB_PROFILE = __DIR__.'/../../resources/sRGB2014.icc';
 
+    /**
+     * AdobeCompat-v2.icc from Compact-ICC-Profiles (CC0): the Adobe RGB (1998) colour space without Adobe's
+     * licence terms; converts identically to Adobe's own profile (0 of 90 000 values differ on a test image).
+     */
+    public const ADOBE_RGB_PROFILE = __DIR__.'/../../resources/AdobeCompat-v2.icc';
+
     private const PROBE_SIZE = 16;
+
+    /**
+     * Tags a camera JPEG shot in Adobe RGB mode that carries no ICC profile, so that normalizeToSrgb() converts it.
+     * DCF cameras write EXIF InteroperabilityIndex "R03" instead of a profile (see ExifInteroperability); browsers
+     * ignore it and show such photos washed out, so the conversion is an improvement over the original. Call it
+     * right after readImage(): thumbnailImage() and cropThumbnailImage() drop the EXIF block (they keep ICC), so
+     * afterwards there is nothing to read. Images with a profile or without the tag are left alone; a few µs.
+     *
+     * @throws \ImagickException
+     * @throws \RuntimeException when the bundled profile cannot be read
+     */
+    public static function tagFromExif(\Imagick $imagick): void
+    {
+        if ([] !== $imagick->getImageProfiles('icc', false)) {
+            return;
+        }
+
+        $exif = $imagick->getImageProfiles('exif', true)['exif'] ?? null;
+
+        if (!\is_string($exif) || 'R03' !== ExifInteroperability::index($exif)) {
+            return;
+        }
+
+        $imagick->setImageProfile('icc', self::read(self::ADOBE_RGB_PROFILE));
+    }
 
     /**
      * Converts the pixels to sRGB, honouring an embedded ICC profile, and leaves the image tagged with the bundled
@@ -174,9 +205,17 @@ final class ColorProfile
      */
     private static function srgbProfile(): string
     {
-        $profile = @file_get_contents(self::SRGB_PROFILE);
+        return self::read(self::SRGB_PROFILE);
+    }
+
+    /**
+     * @throws \RuntimeException
+     */
+    private static function read(string $path): string
+    {
+        $profile = @file_get_contents($path);
         if (false === $profile) {
-            throw new \RuntimeException(\sprintf('The bundled sRGB profile "%s" is missing or unreadable; install id-sign/image-bundle with its resources/ directory.', self::SRGB_PROFILE));
+            throw new \RuntimeException(\sprintf('The bundled ICC profile "%s" is missing or unreadable; install id-sign/image-bundle with its resources/ directory.', $path));
         }
 
         return $profile;
