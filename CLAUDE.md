@@ -249,7 +249,13 @@ Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box thro
   at 800×600), 0 without a profile; cache miss only. Target: the ICC's `sRGB2014.icc` in `resources/` — measured against the
   sRGB profiles found in real files (HP "sRGB IEC61966-2.1", Apple/Google compact "sRGB"/"c2", GIMP built-in) the
   conversion changes ≤1/255 on a few values, i.e. nothing, while the deprecated "no black scaling" profile would lift
-  dark tones by up to 30/255. Identical results on ImageMagick 6.9.12 (Ubuntu 24.04) and 7.1.2.
+  dark tones by up to 30/255. Identical results on ImageMagick 6.9.12 (Ubuntu 24.04) and 7.1.2. A profile LCMS
+  rejects (truncated, or an RGB profile on CMYK pixels — ImageMagick reports the mismatch as an error) is logged as
+  a warning through the optional `?LoggerInterface` of the processor and the blur generator and stripped without
+  conversion; the wrong-coloured variant is cached, so the log line is the only trace. `applyWatermark()` converts
+  the watermark the same way before compositing. `IdSignImageExtension::load()` refuses to build the container when
+  `resources/sRGB2014.icc` is unreadable (a package shipped without `resources/`), instead of a 500 at the first
+  cache miss on a profiled source.
 - **Source limits:** `SourceSizeValidator::assertFits()` checks `max_source_bytes`, `assertPixelsFit()` checks
   `max_source_pixels` (default 64 MP) against width × height from the `pingImage()` the processor, the metadata reader
   and the blur generator do before decoding — the blur generator pings for this reason alone, since a non-JPEG source
@@ -313,7 +319,9 @@ and emit a byte-identical encoder-default file for every quality value. Setting 
 
 #### Watermark
 
-Applied after resize, before strip/format conversion. Uses `Imagick::compositeImage()` with manually calculated x/y
+Applied after resize and the sRGB conversion, before strip/format conversion; the watermark itself goes through
+`ColorProfile::normalizeToSrgb()` after its `thumbnailImage()`, so a Display P3 PNG from Figma keeps its colours.
+Uses `Imagick::compositeImage()` with manually calculated x/y
 position (not `setGravity()`, which has PHPStan type issues with Imagick enum constants).
 
 Named watermark profiles configured in bundle config. `WatermarkRegistry` manages profiles, `WatermarkOptions` is the

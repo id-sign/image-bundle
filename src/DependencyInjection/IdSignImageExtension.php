@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\DependencyInjection;
 
+use IdSign\ImageBundle\Service\ColorProfile;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
 use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\Config\FileLocator;
@@ -27,6 +28,12 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
     {
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);
+
+        // Fail at container build, not at the first cache miss on a profiled source: a deployment that ships the
+        // package without resources/ (export-ignore, vendor pruning) would otherwise answer 500 for iPhone photos.
+        if (!is_readable(ColorProfile::SRGB_PROFILE)) {
+            throw new \RuntimeException(\sprintf('The bundled sRGB profile "%s" is missing or unreadable; install id-sign/image-bundle with its resources/ directory.', ColorProfile::SRGB_PROFILE));
+        }
 
         $container->setParameter('id_sign_image.device_sizes', $config['device_sizes']);
         $container->setParameter('id_sign_image.default_quality', $config['default_quality']);

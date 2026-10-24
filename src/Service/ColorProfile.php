@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Service;
 
+use Psr\Log\LoggerInterface;
+
 /**
  * Brings an image to sRGB before its metadata is stripped.
  *
@@ -28,28 +30,50 @@ final class ColorProfile
 
     /**
      * Converts the pixels to sRGB, honouring an embedded ICC profile, and leaves the image tagged with the bundled
-     * sRGB profile for the caller to strip. Images without a profile are assumed to be sRGB already and only get
-     * the plain colorspace transform (profile-less CMYK or grayscale). About 80 ns per pixel (40 ms for 800×600),
-     * so callers run it after the fit, on the small output — and only on cache miss. A profile that is itself
-     * sRGB (see isSrgb()) is left alone, which costs 2–4 ms instead.
+     * sRGB profile for the caller to strip. About 80 ns per pixel (40 ms for 800×600), so callers run it after the
+     * fit, on the small output — and only on cache miss. A profile that is itself sRGB (see isSrgb()) is left alone,
+     * which costs 2–4 ms instead; an image without a profile is assumed to be sRGB already.
+     *
+     * A profile that does not fit the image (an RGB profile on CMYK pixels — ImageMagick 7 would silently convert
+     * the CMYK channels as if they were RGB, 6 throws; anything that is not an RGB, CMYK or GRAY profile) or that
+     * LCMS cannot open (truncated) is reported to the logger and stripped without conversion, as every version
+     * before did — a wrong-coloured variant is better than none, but it is cached, so the warning is the only trace.
      *
      * @throws \ImagickException
+     * @throws \RuntimeException when the bundled sRGB profile cannot be read (IdSignImageExtension checks it at
+     *                           container build time, so this does not happen in a Symfony application)
      */
-    public static function normalizeToSrgb(\Imagick $imagick): void
+    public static function normalizeToSrgb(\Imagick $imagick, ?LoggerInterface $logger = null): void
     {
         $profile = $imagick->getImageProfiles('icc', true)['icc'] ?? null;
 
         if (\is_string($profile)) {
-            try {
-                if (!self::isSrgb($profile)) {
-                    $imagick->profileImage('icc', self::srgbProfile());
+            $profileSpace = self::profileColorspace($profile);
+
+            if (!self::profileFitsImage($profileSpace, $imagick)) {
+                $logger?->warning('The ICC profile of an image ("{profile}") does not match the image\'s colorspace; the profile is stripped without conversion.', [
+                    'profile' => $profileSpace,
+                ]);
+            } else {
+                try {
+                    // The sRGB probe only makes sense for RGB profiles; CMYK and GRAY profiles always convert.
+                    if ('RGB ' !== $profileSpace || !self::isSrgb($profile)) {
+                        // Converts the pixels and leaves the image in sRGB — nothing more to do.
+                        $imagick->profileImage('icc', self::srgbProfile());
+
+                        return;
+                    }
+                } catch (\ImagickException $e) {
+                    $logger?->warning('The ICC profile of an image could not be converted to sRGB; the profile is stripped without conversion: {message}', [
+                        'message' => $e->getMessage(),
+                        'exception' => $e,
+                    ]);
                 }
-            } catch (\ImagickException) {
-                // A profile LCMS cannot open (truncated, or not matching the image's colorspace): keep the pixels and
-                // let the caller strip the profile, as every version before did.
             }
         }
 
+        // No profile, an sRGB-tagged image, or the fallback above: the plain transform turns profile-less CMYK and
+        // grayscale into sRGB and is a no-op for RGB-encoded images.
         $imagick->transformImageColorspace(\Imagick::COLORSPACE_SRGB);
     }
 
@@ -62,7 +86,8 @@ final class ColorProfile
      * sRGB. Costs 2–4 ms (building the LCMS transform) whatever the image size, against 36 ms–0.5 s for converting
      * an sRGB-tagged 0.5–8 MP image for nothing. Monitor profiles (deltas of 7+) and wide gamuts are not sRGB.
      *
-     * @throws \ImagickException
+     * @throws \ImagickException when LCMS cannot open the profile
+     * @throws \RuntimeException when the bundled sRGB profile cannot be read
      */
     public static function isSrgb(string $profile): bool
     {
@@ -119,11 +144,39 @@ final class ColorProfile
         return $pattern;
     }
 
+    /**
+     * The data colour space from the ICC header (bytes 16–19): "RGB ", "CMYK", "GRAY", "Lab ", …; "" for anything
+     * too short to be a profile.
+     */
+    private static function profileColorspace(string $profile): string
+    {
+        return \strlen($profile) >= 128 ? substr($profile, 16, 4) : '';
+    }
+
+    /**
+     * ImageMagick does not check this itself: an RGB profile on CMYK pixels is "converted" channel by channel on 7
+     * and rejected on 6. An RGB profile on a grayscale image is fine (the gray values are taken as equal RGB).
+     */
+    private static function profileFitsImage(string $profileSpace, \Imagick $imagick): bool
+    {
+        $imageSpace = $imagick->getImageColorspace();
+
+        return match ($profileSpace) {
+            'RGB ' => \Imagick::COLORSPACE_CMYK !== $imageSpace,
+            'CMYK' => \Imagick::COLORSPACE_CMYK === $imageSpace,
+            'GRAY' => \Imagick::COLORSPACE_GRAY === $imageSpace,
+            default => false,
+        };
+    }
+
+    /**
+     * @throws \RuntimeException
+     */
     private static function srgbProfile(): string
     {
-        $profile = file_get_contents(self::SRGB_PROFILE);
+        $profile = @file_get_contents(self::SRGB_PROFILE);
         if (false === $profile) {
-            throw new \RuntimeException(\sprintf('Cannot read the bundled sRGB profile "%s".', self::SRGB_PROFILE));
+            throw new \RuntimeException(\sprintf('The bundled sRGB profile "%s" is missing or unreadable; install id-sign/image-bundle with its resources/ directory.', self::SRGB_PROFILE));
         }
 
         return $profile;

@@ -6,6 +6,7 @@ namespace IdSign\ImageBundle\Tests\Service;
 
 use IdSign\ImageBundle\Service\ColorProfile;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\AbstractLogger;
 
 class ColorProfileTest extends TestCase
 {
@@ -57,16 +58,77 @@ class ColorProfileTest extends TestCase
         self::assertSame([], $imagick->getImageProfiles('icc', false));
     }
 
-    public function testUnreadableProfileFallsBackToThePlainTransform(): void
+    public function testUnreadableProfileFallsBackToThePlainTransformAndLogsAWarning(): void
     {
         $imagick = new \Imagick();
         $imagick->newImage(4, 4, 'rgb(100,200,80)');
         $imagick->setImageFormat('png');
         $imagick->setImageProfile('icc', str_repeat('x', 300));
+        $logger = $this->recordingLogger();
+
+        ColorProfile::normalizeToSrgb($imagick, $logger);
+
+        self::assertSame([100, 200, 80], $imagick->exportImagePixels(2, 2, 1, 1, 'RGB', \Imagick::PIXEL_CHAR));
+        self::assertCount(1, $logger->records);
+        self::assertSame('warning', $logger->records[0]['level']);
+        self::assertStringContainsString('stripped without conversion', $logger->records[0]['message']);
+    }
+
+    /**
+     * An RGB profile on CMYK pixels: ImageMagick 7 would silently convert the CMYK channels as if they were RGB
+     * (rgb(140,0,159) for this image), 6 throws. The pixels must survive, the image must end up in sRGB (the
+     * fallback transform) and the warning must be logged. Without a logger nothing is thrown either.
+     */
+    public function testProfileNotMatchingTheColorspaceFallsBackAndLogs(): void
+    {
+        $imagick = new \Imagick();
+        $imagick->newImage(4, 4, 'rgb(100,200,80)');
+        $imagick->setImageFormat('png');
+        $imagick->transformImageColorspace(\Imagick::COLORSPACE_CMYK);
+        $imagick->setImageProfile('icc', self::embeddedProfile(self::P3));
+        $logger = $this->recordingLogger();
+
+        ColorProfile::normalizeToSrgb($imagick, $logger);
+
+        self::assertSame(\Imagick::COLORSPACE_SRGB, $imagick->getImageColorspace());
+        self::assertEqualsWithDelta([100, 200, 80], $imagick->exportImagePixels(2, 2, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 2);
+        self::assertCount(1, $logger->records);
+        self::assertSame('warning', $logger->records[0]['level']);
+    }
+
+    public function testAlphaSurvivesTheConversion(): void
+    {
+        $imagick = new \Imagick();
+        $imagick->newImage(4, 4, 'rgba(100,200,80,0.5)');
+        $imagick->setImageFormat('png');
+        $imagick->setImageProfile('icc', self::embeddedProfile(self::P3));
 
         ColorProfile::normalizeToSrgb($imagick);
 
-        self::assertSame([100, 200, 80], $imagick->exportImagePixels(2, 2, 1, 1, 'RGB', \Imagick::PIXEL_CHAR));
+        $pixel = array_map(intval(...), $imagick->exportImagePixels(2, 2, 1, 1, 'RGBA', \Imagick::PIXEL_CHAR));
+        self::assertEqualsWithDelta([45, 203, 56], \array_slice($pixel, 0, 3), 3);
+        self::assertEqualsWithDelta(128, $pixel[3], 1);
+    }
+
+    /**
+     * A grayscale image tagged with an RGB profile (a wide-gamut one here, so the conversion path runs) is a valid
+     * file: the gray values are taken as equal RGB, converted, and the image ends up in sRGB without a warning.
+     */
+    public function testGrayscaleImageWithAnRgbProfileEndsUpInSrgb(): void
+    {
+        $imagick = new \Imagick();
+        $imagick->newImage(4, 4, 'rgb(120,120,120)');
+        $imagick->setImageFormat('png');
+        $imagick->setImageType(\Imagick::IMGTYPE_GRAYSCALE);
+        $imagick->setImageProfile('icc', self::embeddedProfile(self::P3));
+        $logger = $this->recordingLogger();
+
+        ColorProfile::normalizeToSrgb($imagick, $logger);
+
+        self::assertSame([], $logger->records);
+
+        self::assertSame(\Imagick::COLORSPACE_SRGB, $imagick->getImageColorspace());
+        self::assertEqualsWithDelta([120, 120, 120], $imagick->exportImagePixels(2, 2, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 1);
     }
 
     /**
@@ -101,6 +163,22 @@ class ColorProfileTest extends TestCase
 
         self::assertSame('sRGB2014', $probe->getImageProperty('icc:description'));
         self::assertSame('Copyright International Color Consortium, 2015', $probe->getImageProperty('icc:copyright'));
+    }
+
+    /**
+     * @return AbstractLogger&object{records: list<array{level: string, message: string}>}
+     */
+    private function recordingLogger(): AbstractLogger
+    {
+        return new class extends AbstractLogger {
+            /** @var list<array{level: string, message: string}> */
+            public array $records = [];
+
+            public function log($level, \Stringable|string $message, array $context = []): void
+            {
+                $this->records[] = ['level' => (string) $level, 'message' => (string) $message];
+            }
+        };
     }
 
     private static function embeddedProfile(string $path): string
