@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\DependencyInjection;
 
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
 
@@ -17,10 +18,23 @@ class Configuration implements ConfigurationInterface
             ->children()
                 ->arrayNode('device_sizes')
                     ->integerPrototype()->end()
-                    ->defaultValue([640, 750, 828, 1080, 1200, 1920, 2048, 3840])
+                    ->defaultValue([320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840])
                 ->end()
                 ->integerNode('default_quality')
                     ->defaultValue(80)
+                ->end()
+                ->arrayNode('sources')
+                    ->info('Named image sources: name => absolute base path. Reference them as "@name/path" in src. Paths without a prefix use the "default" source (added automatically when omitted).')
+                    ->useAttributeAsKey('name')
+                    ->normalizeKeys(false)
+                    ->defaultValue([SourcePath::DEFAULT_SOURCE => '%kernel.project_dir%/data'])
+                    ->scalarPrototype()
+                        ->cannotBeEmpty()
+                    ->end()
+                    ->validate()
+                        ->ifTrue(static fn (array $v): bool => [] !== preg_grep('/^[A-Za-z0-9_-]+$/', array_map('strval', array_keys($v)), \PREG_GREP_INVERT))
+                        ->thenInvalid('Source names may only contain letters, digits, "_" and "-" (got %s).')
+                    ->end()
                 ->end()
                 ->arrayNode('formats')
                     ->scalarPrototype()->end()

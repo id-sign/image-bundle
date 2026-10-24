@@ -21,6 +21,7 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 
 - `phpstan/phpstan` + `phpstan/phpstan-symfony` (level 9)
 - `phpunit/phpunit`
+- `symfony/yaml` (bundle loads `services.yaml`; needed by the DI extension test)
 
 ## Architecture
 
@@ -47,7 +48,10 @@ src/
 │   └── WatermarkRegistry.php
 ├── Source/
 │   ├── ImageSourceInterface.php
-│   └── LocalFilesystemSource.php
+│   ├── LocalFilesystemSource.php
+│   ├── NamedImageSource.php
+│   ├── SourcePath.php
+│   └── UnknownImageSourceException.php
 ├── Cache/
 │   ├── CacheStorageInterface.php
 │   ├── LocalFilesystemCacheStorage.php
@@ -123,9 +127,34 @@ directly via `delete()`.
 
 `ImageSourceInterface` with two methods: `exists(string $path): bool` and `getAbsolutePath(string $path): string`.
 
-Default implementation: `LocalFilesystemSource` configured with `$basePath` (default: `%kernel.project_dir%/data`).
-Users override via Symfony DI to use custom sources (Flysystem, S3, etc.). No source configuration in bundle config —
-source path is a service argument.
+Sources are named. The `ImageSourceInterface` alias points to `NamedImageSource`, a composite that dispatches
+`@name/rest` to the source `name` (a `ServiceLocator` of services tagged `id_sign_image.source`, indexed by their
+`name` attribute) and paths without a prefix to the `default` source (constructor argument bound to the alias
+`id_sign_image.source.default`, which points to `LocalFilesystemSource`). The prefix stays part of `src` everywhere
+else — URL, HMAC payload, cache directory, `meta.json`/`blur.txt` location, `image:purge` — so no other layer knows
+about sources, and `@reference/logo.png` and `logo.png` can never share a cache entry.
+
+`SourcePath::normalize()` strips `@default/` at the four entry points where `src` comes from user code
+(`ImageComponent::postMount()`, `ImageUrlExtension::imageUrl()`, `ImageUrlGenerator::generate()`,
+`PurgeCacheCommand`), so `@default/x.jpg` and `x.jpg` yield one URL and one cache directory. `NamedImageSource`
+deliberately rejects `@default/` and unknown names: `exists()` returns false, `getAbsolutePath()` throws
+`UnknownImageSourceException` (an `InvalidArgumentException`, same contract as `..`). An unknown source name therefore
+behaves like a missing file — page renders without `height`/blur, image URL returns 404 (a `@default/` inserted into a
+signed URL returns 403 because the signature covers a different string).
+
+Configuration: `sources: {name: absolute path}`. `Configuration` validates names against `[A-Za-z0-9_-]+` and keeps
+keys verbatim (`normalizeKeys(false)`, the name ends up in URLs). `IdSignImageExtension` adds
+`default: %kernel.project_dir%/data` when missing, sets `$basePath` of the `LocalFilesystemSource` service from
+`sources.default` (an application-level override of that definition still wins, as before 0.4), and registers every
+other source as `id_sign_image.source.{name}` (`LocalFilesystemSource`) tagged `id_sign_image.source`. Custom
+implementations plug in through the same tag; a custom default re-points the `id_sign_image.source.default` alias.
+`..` protection lives in each `LocalFilesystemSource`, so it applies inside every source. `$default` in
+`NamedImageSource` must stay explicitly bound in `services.yaml` — autowiring by type would resolve to the interface
+alias, i.e. to the composite itself.
+
+Performance: a warm-cache render costs one `str_starts_with` per image (normalization); the prefix split (~0.5 μs,
+about one HMAC) runs only where `exists()`/`getAbsolutePath()` were already called — on cache miss. Public-mode cache
+hits never reach PHP, so the feature is free there.
 
 #### Cache storage
 
@@ -350,7 +379,7 @@ No HMAC, no Imagick processing.
 
 1. `CachePathResolver::parse($path)` — extract parameters from URL
 2. `UrlSigner::verify()` — HMAC check → 403 if invalid
-3. `ImageSourceInterface::exists()` — source check → 404 if missing
+3. `ImageSourceInterface::exists()` — source check → 404 if missing (unknown `@source/` name included)
 4. `WatermarkRegistry::has()` — watermark profile check → 400 if unknown profile
 5. `CacheStorageInterface::has()` — cache check (includes TTL in controller mode)
 6. Cache miss: process via `ImagickProcessor` to temp file → `write()` to cache
@@ -386,13 +415,16 @@ the sole author.
 
 ### PHPUnit
 
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`,
-  `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`, `ImageUrlExtension`, `ImagickProcessor`
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `LocalFilesystemSource`, `NamedImageSource`,
+  `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
+  `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
+  `ImageUrlExtension`, `ImagickProcessor`
   (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width),
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
   `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
-  404), avif/webp format generation, watermark processing, SVG passthrough
+  404), avif/webp format generation, watermark processing, SVG passthrough, named sources (`@reference/` cache
+  directory, unknown source 404, `@default/` 403/404)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity
   tests), `tests/Fixtures/rotated.jpg` (stored 40x30 with EXIF Orientation=6, displayed 30x40),
@@ -403,8 +435,11 @@ the sole author.
 
 ```yaml
 id_sign_image:
-    device_sizes: [ 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
+    device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
+    sources:                        # name => absolute path; "@name/path" in src, no prefix = default
+        default: '%kernel.project_dir%/data'
+        reference: '%kernel.project_dir%/assets/reference'
     formats: [ 'avif', 'webp' ]
     cache:
         ttl: 2592000                    # 30 days (controller mode only)
@@ -431,14 +466,9 @@ id_sign_image:
     route_prefix: '/_image'
 ```
 
-Image source path is configured as a service argument, not in bundle config:
-
-```yaml
-# config/services.yaml
-IdSign\ImageBundle\Source\LocalFilesystemSource:
-    arguments:
-        $basePath: '%kernel.project_dir%/data'
-```
+Custom source implementations are services tagged `id_sign_image.source` with a `name` attribute; a custom default
+re-points the `id_sign_image.source.default` alias. The pre-0.4 override of `LocalFilesystemSource`'s `$basePath`
+argument still works and takes precedence over `sources.default`.
 
 ## Release process
 

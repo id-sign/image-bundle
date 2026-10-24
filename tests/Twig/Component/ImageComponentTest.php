@@ -553,4 +553,85 @@ class ImageComponentTest extends TestCase
 
         self::assertSame(120, $component->width);
     }
+
+    public function testDefaultSourcePrefixRendersIdenticalMarkupToNoPrefix(): void
+    {
+        $plain = $this->createComponentWithStubs();
+        $plain->src = 'uploads/photo.jpg';
+        $plain->width = 800;
+        $plain->postMount();
+
+        $prefixed = $this->createComponentWithStubs();
+        $prefixed->src = '@default/uploads/photo.jpg';
+        $prefixed->width = 800;
+        $prefixed->postMount();
+
+        self::assertSame('uploads/photo.jpg', $prefixed->src);
+        self::assertSame($plain->getFallbackSrc(), $prefixed->getFallbackSrc());
+        self::assertSame($plain->getSources(), $prefixed->getSources());
+    }
+
+    public function testDefaultSourcePrefixIsStrippedBeforeMetadataLookup(): void
+    {
+        $component = $this->createComponent(true);
+        $component->src = '@default/uploads/photo.jpg';
+        $component->width = 800;
+        $this->metadataReader->expects($this->once())
+            ->method('calculateHeight')
+            ->with('uploads/photo.jpg', 800)
+            ->willReturn(600);
+
+        $component->postMount();
+
+        self::assertSame(600, $component->getResolvedHeight());
+    }
+
+    public function testNamedSourcePrefixIsPartOfEveryUrl(): void
+    {
+        $component = $this->createComponentWithStubs();
+        $component->src = '@reference/uploads/photo.jpg';
+        $component->width = 800;
+        $component->postMount();
+
+        self::assertStringStartsWith('/_image/%40reference/uploads/photo.jpg/', $component->getFallbackSrc());
+
+        foreach ($component->getSources() as $source) {
+            foreach (explode(', ', $source['srcset']) as $candidate) {
+                self::assertStringStartsWith('/_image/%40reference/uploads/photo.jpg/', $candidate);
+            }
+        }
+    }
+
+    public function testNamedSourcePrefixProducesDifferentUrlsThanDefault(): void
+    {
+        $plain = $this->createComponentWithStubs();
+        $plain->src = 'uploads/photo.jpg';
+        $plain->width = 800;
+        $plain->postMount();
+
+        $prefixed = $this->createComponentWithStubs();
+        $prefixed->src = '@reference/uploads/photo.jpg';
+        $prefixed->width = 800;
+        $prefixed->postMount();
+
+        self::assertNotSame($plain->getFallbackSrc(), $prefixed->getFallbackSrc());
+    }
+
+    public function testSvgSrcKeepsNamedSourcePrefixAndDropsDefaultPrefix(): void
+    {
+        $named = $this->createComponentWithStubs();
+        $named->src = '@reference/icons/logo.svg';
+        $named->width = 120;
+        $named->postMount();
+
+        self::assertTrue($named->isSvg());
+        self::assertSame('/_image/%40reference/icons/logo.svg', $named->getSvgSrc());
+
+        $default = $this->createComponentWithStubs();
+        $default->src = '@default/icons/logo.svg';
+        $default->width = 120;
+        $default->postMount();
+
+        self::assertSame('/_image/icons/logo.svg', $default->getSvgSrc());
+    }
 }

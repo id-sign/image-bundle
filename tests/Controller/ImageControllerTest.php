@@ -11,8 +11,11 @@ use IdSign\ImageBundle\Service\ImagickProcessor;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\UrlSigner;
 use IdSign\ImageBundle\Service\WatermarkRegistry;
+use IdSign\ImageBundle\Source\ImageSourceInterface;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
+use IdSign\ImageBundle\Source\NamedImageSource;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Request;
 
@@ -281,5 +284,131 @@ class ImageControllerTest extends TestCase
         }
 
         rmdir($dir);
+    }
+
+    /**
+     * Controller whose source is the composite: fixtures as default, a temp dir with ref.jpg as "@reference".
+     *
+     * @return array{ImageController, string}
+     */
+    private function createControllerWithNamedSource(): array
+    {
+        $referenceDir = $this->cacheDir.'-reference';
+        mkdir($referenceDir, 0o775, true);
+        copy(__DIR__.'/../Fixtures/test.jpg', $referenceDir.'/ref.jpg');
+        copy(__DIR__.'/../Fixtures/logo.svg', $referenceDir.'/ref.svg');
+
+        $signer = new UrlSigner('test-secret');
+        $sizeValidator = new SourceSizeValidator(0);
+
+        $controller = new ImageController(
+            new ImagickProcessor($sizeValidator, 0o660, 0o770),
+            new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770),
+            $this->cachePathResolver,
+            $signer,
+            new NamedImageSource(
+                new LocalFilesystemSource(__DIR__.'/../Fixtures'),
+                new ServiceLocator(['reference' => static fn (): ImageSourceInterface => new LocalFilesystemSource($referenceDir)]),
+            ),
+            new WatermarkRegistry([]),
+            $sizeValidator,
+        );
+
+        return [$controller, $referenceDir];
+    }
+
+    public function testNamedSourceVariantIsCachedUnderThePrefixedDirectory(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            $path = $this->cachePathResolver->resolve('@reference/ref.jpg', 64, null, null, 80, 'webp');
+            $response = $controller(Request::create('/_image/'.CachePathResolver::encodeForUrl($path)), $path);
+
+            self::assertInstanceOf(BinaryFileResponse::class, $response);
+            self::assertSame(200, $response->getStatusCode());
+            self::assertFileExists($this->cacheDir.'/'.$path);
+            self::assertStringStartsWith($this->cacheDir.'/@reference/ref.jpg/', $this->cacheDir.'/'.$path);
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testNamedSourceFileIsNotVisibleThroughTheDefaultSource(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            $path = $this->cachePathResolver->resolve('ref.jpg', 64, null, null, 80, 'webp');
+            $response = $controller(Request::create('/_image/'.$path), $path);
+
+            self::assertSame(404, $response->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testUnknownSourceReturns404(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            $path = $this->cachePathResolver->resolve('@unknown/test.jpg', 64, null, null, 80, 'webp');
+            $response = $controller(Request::create('/_image/'.$path), $path);
+
+            self::assertSame(404, $response->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testDefaultPrefixInsertedIntoASignedUrlReturns403(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            // Bundle never emits "@default/"; a signature for "test.jpg" does not cover "@default/test.jpg".
+            $path = '@default/'.$this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+            $response = $controller(Request::create('/_image/'.$path), $path);
+
+            self::assertSame(403, $response->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testDefaultPrefixSignedDirectlyReturns404(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            // Even with a matching signature (CachePathResolver called directly, bypassing the entry
+            // points), the composite refuses "@default/" so the file gets no second cache directory.
+            $path = $this->cachePathResolver->resolve('@default/test.jpg', 64, null, null, 80, 'webp');
+            $response = $controller(Request::create('/_image/'.$path), $path);
+
+            self::assertSame(404, $response->getStatusCode());
+            self::assertDirectoryDoesNotExist($this->cacheDir.'/@default');
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testSvgFromNamedSourceIsCachedUnderThePrefixedPath(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            $path = '@reference/ref.svg';
+            $response = $controller(Request::create('/_image/'.CachePathResolver::encodeForUrl($path)), $path);
+
+            self::assertInstanceOf(BinaryFileResponse::class, $response);
+            self::assertSame(200, $response->getStatusCode());
+            self::assertFileExists($this->cacheDir.'/@reference/ref.svg');
+
+            self::assertSame(404, $controller(Request::create('/_image/@default/logo.svg'), '@default/logo.svg')->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
     }
 }

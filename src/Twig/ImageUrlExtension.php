@@ -6,6 +6,7 @@ namespace IdSign\ImageBundle\Twig;
 
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Extension\AbstractExtension;
 use Twig\TwigFunction;
@@ -42,6 +43,8 @@ class ImageUrlExtension extends AbstractExtension
         ?bool $autoDimensions = null,
         ?bool $lossless = null,
     ): string {
+        $src = SourcePath::normalize($src);
+
         if ($width <= 0) {
             throw new \InvalidArgumentException(\sprintf('image_url() requires width > 0 (got %d for src "%s").', $width, $src));
         }

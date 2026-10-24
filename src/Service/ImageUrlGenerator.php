@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Service;
 
 use IdSign\ImageBundle\Cache\CachePathResolver;
+use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\HttpFoundation\Request;
 
 class ImageUrlGenerator
@@ -29,6 +30,8 @@ class ImageUrlGenerator
         ?string $watermark = null,
         bool $lossless = false,
     ): string {
+        $src = SourcePath::normalize($src);
+
         return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark, $lossless));
     }
 

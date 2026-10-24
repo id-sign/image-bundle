@@ -4,12 +4,26 @@ services:
         autoconfigure: true
 
     # Source
+    # Default source (paths without an "@name/" prefix). The extension replaces $basePath with
+    # id_sign_image.sources.default; an application-level override of this definition still wins.
     IdSign\ImageBundle\Source\LocalFilesystemSource:
         arguments:
             $basePath: '%kernel.project_dir%/data'
 
-    IdSign\ImageBundle\Source\ImageSourceInterface:
+    # Re-point this alias to use a custom ImageSourceInterface implementation as the default source.
+    id_sign_image.source.default:
         alias: IdSign\ImageBundle\Source\LocalFilesystemSource
+
+    # Named sources ("@name/path"). Configured sources are registered by the extension with the
+    # same tag, so custom implementations plug in alongside them. $default is bound explicitly:
+    # autowiring by type would resolve to the ImageSourceInterface alias, i.e. to this very service.
+    IdSign\ImageBundle\Source\NamedImageSource:
+        arguments:
+            $default: '@id_sign_image.source.default'
+            $named: !tagged_locator { tag: 'id_sign_image.source', index_by: 'name' }
+
+    IdSign\ImageBundle\Source\ImageSourceInterface:
+        alias: IdSign\ImageBundle\Source\NamedImageSource
 
     # Cache
     IdSign\ImageBundle\Cache\CachePathResolver: ~

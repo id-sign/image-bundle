@@ -81,4 +81,20 @@ class ImageUrlGeneratorTest extends TestCase
 
         self::assertSame($url1, $url2);
     }
+
+    public function testDefaultSourcePrefixYieldsTheSameUrlAsNoPrefix(): void
+    {
+        self::assertSame(
+            $this->generator->generate('uploads/photo.jpg', 800, null, null, 80, 'webp'),
+            $this->generator->generate('@default/uploads/photo.jpg', 800, null, null, 80, 'webp'),
+        );
+    }
+
+    public function testNamedSourcePrefixIsPartOfTheUrl(): void
+    {
+        $url = $this->generator->generate('@reference/uploads/photo.jpg', 800, null, null, 80, 'webp');
+
+        self::assertStringStartsWith('/_image/%40reference/uploads/photo.jpg/', $url);
+        self::assertNotSame($this->generator->generate('uploads/photo.jpg', 800, null, null, 80, 'webp'), $url);
+    }
 }
