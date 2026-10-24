@@ -6,6 +6,7 @@ namespace IdSign\ImageBundle\Service;
 
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
+use Psr\Log\LoggerInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
 class BlurPlaceholderGenerator implements ResetInterface
@@ -19,6 +20,7 @@ class BlurPlaceholderGenerator implements ResetInterface
         private readonly CacheStorageInterface $cacheStorage,
         private readonly int $blurSize,
         private readonly int $blurQuality,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -111,7 +113,7 @@ class BlurPlaceholderGenerator implements ResetInterface
             $imagick->thumbnailImage($this->blurSize, 0);
             // thumbnailImage() keeps the ICC profile; convert the 10 px result so the placeholder has the colours
             // of the processed variant, then strip.
-            ColorProfile::normalizeToSrgb($imagick);
+            ColorProfile::normalizeToSrgb($imagick, $this->logger);
             $imagick->setImageFormat('JPEG');
             $imagick->setImageCompressionQuality($this->blurQuality);
             $imagick->stripImage();

@@ -11,6 +11,7 @@ use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\SourceTooLargeException;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
 use IdSign\ImageBundle\Service\UrlSigner;
+use IdSign\ImageBundle\Service\WatermarkOptions;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -186,6 +187,40 @@ class ImagickProcessorTest extends TestCase
         $result = new \Imagick($output);
         self::assertEqualsWithDelta([46, 202, 57], $result->exportImagePixels(16, 12, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
         self::assertSame([], $result->getImageProfiles('icc', false));
+    }
+
+    /**
+     * A watermark PNG exported in Display P3 (Figma, Affinity, Photoshop) is composited onto the sRGB image: it must
+     * be converted too, or its colours shift while the image's do not. The watermark is flat rgb(100,200,80) in P3,
+     * rgb(45,203,56) in sRGB, 50 % of the width at the top-left corner of the 100x75 red source.
+     */
+    public function testWatermarkWithAnEmbeddedProfileIsConvertedToSrgb(): void
+    {
+        $watermarkPath = $this->tmpPath('png');
+        $source = new \Imagick(__DIR__.'/../Fixtures/p3.jpg');
+        $watermark = new \Imagick();
+        $watermark->newImage(20, 20, 'rgb(100,200,80)');
+        $watermark->setImageFormat('png');
+        $watermark->setImageProfile('icc', $source->getImageProfiles('icc', true)['icc']);
+        $watermark->writeImage($watermarkPath);
+        $watermark->clear();
+        $source->clear();
+        $output = $this->tmpPath('png');
+
+        $this->processor->process(
+            __DIR__.'/../Fixtures/test.jpg',
+            $output,
+            100,
+            null,
+            null,
+            'png',
+            80,
+            new WatermarkOptions($watermarkPath, 'top-left', 100, 50, 0),
+        );
+
+        $result = new \Imagick($output);
+        self::assertEqualsWithDelta([45, 203, 56], $result->exportImagePixels(10, 10, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
+        self::assertEqualsWithDelta([255, 0, 0], $result->exportImagePixels(90, 65, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
     }
 
     public function testSrgbTaggedSourceKeepsItsColours(): void
