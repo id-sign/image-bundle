@@ -173,6 +173,33 @@ class ImagickProcessorTest extends TestCase
     }
 
     /**
+     * p3.jpg stores flat rgb(100,199,80) with a Display P3 profile, which is rgb(46,202,57) in sRGB. The variant
+     * must carry the sRGB values and no profile; before the fix it kept the stored values (washed-out colours for
+     * every iPhone photo), because transformImageColorspace() is a no-op for an RGB-encoded image.
+     */
+    public function testEmbeddedProfileIsConvertedToSrgbBeforeStripping(): void
+    {
+        $output = $this->tmpPath('png');
+
+        $this->processor->process(__DIR__.'/../Fixtures/p3.jpg', $output, 32, null, null, 'png', 80);
+
+        $result = new \Imagick($output);
+        self::assertEqualsWithDelta([46, 202, 57], $result->exportImagePixels(16, 12, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 3);
+        self::assertSame([], $result->getImageProfiles('icc', false));
+    }
+
+    public function testSrgbTaggedSourceKeepsItsColours(): void
+    {
+        $output = $this->tmpPath('png');
+
+        $this->processor->process(__DIR__.'/../Fixtures/srgb-tagged.jpg', $output, 32, null, null, 'png', 80);
+
+        $result = new \Imagick($output);
+        self::assertEqualsWithDelta([100, 199, 80], $result->exportImagePixels(16, 12, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 1);
+        self::assertSame([], $result->getImageProfiles('icc', false));
+    }
+
+    /**
      * The EXIF rotation runs after the fit. For the proportional resize the pixels must match rotating first
      * (a 90° rotation is a lossless permutation and Lanczos is symmetric under it) up to the 8-bit rounding of
      * the PNG round-trip, and the direction must be the displayed one: rotated.jpg stores a red top row and a
