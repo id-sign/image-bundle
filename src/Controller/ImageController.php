@@ -39,13 +39,19 @@ class ImageController
         return $this->serveRaster($path);
     }
 
+    /**
+     * Cache first, source only on a miss: a hit never touches the source (one stat() locally, a round-trip
+     * for a remote source). A cached variant of a deleted source is therefore served until the TTL expires
+     * or image:purge / deleteBySource() removes it — exactly what public mode does, where try_files never
+     * consults the source either.
+     */
     private function serveSvg(string $src): Response
     {
-        if (!$this->imageSource->exists($src)) {
-            return new JsonResponse(['error' => 'Source image not found.'], Response::HTTP_NOT_FOUND);
-        }
-
         if (!$this->cacheStorage->has($src)) {
+            if (!$this->imageSource->exists($src)) {
+                return new JsonResponse(['error' => 'Source image not found.'], Response::HTTP_NOT_FOUND);
+            }
+
             $sourceFile = $this->imageSource->getAbsolutePath($src);
             $this->sourceSizeValidator->assertFits($sourceFile);
 
@@ -70,15 +76,16 @@ class ImageController
             return new JsonResponse(['error' => 'Invalid signature.'], Response::HTTP_FORBIDDEN);
         }
 
-        if (!$this->imageSource->exists($params['src'])) {
-            return new JsonResponse(['error' => 'Source image not found.'], Response::HTTP_NOT_FOUND);
-        }
-
-        if (null !== $params['watermark'] && !$this->watermarkRegistry->has($params['watermark'])) {
-            return new JsonResponse(['error' => \sprintf('Unknown watermark profile: %s', $params['watermark'])], Response::HTTP_BAD_REQUEST);
-        }
-
+        // Cache first — see serveSvg().
         if (!$this->cacheStorage->has($path)) {
+            if (!$this->imageSource->exists($params['src'])) {
+                return new JsonResponse(['error' => 'Source image not found.'], Response::HTTP_NOT_FOUND);
+            }
+
+            if (null !== $params['watermark'] && !$this->watermarkRegistry->has($params['watermark'])) {
+                return new JsonResponse(['error' => \sprintf('Unknown watermark profile: %s', $params['watermark'])], Response::HTTP_BAD_REQUEST);
+            }
+
             $sourceFile = $this->imageSource->getAbsolutePath($params['src']);
             $watermark = null !== $params['watermark'] ? $this->watermarkRegistry->get($params['watermark']) : null;
             $processor = $this->processor;

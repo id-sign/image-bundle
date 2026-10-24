@@ -198,6 +198,12 @@ configured file permissions (needed because `tempnam()` creates files with `0600
 - **`controller`:** Every request goes through PHP. Enables TTL-based invalidation — `has()` checks `filemtime()`
   against configured TTL. Use for access-controlled images.
 
+In both modes a cached variant is served without consulting the source: `try_files` cannot, and the controller checks
+the cache before `ImageSourceInterface::exists()`, so a warm hit costs no source I/O (one `stat()` locally, a
+round-trip for a remote source). A variant of a deleted source therefore lives until the TTL expires or
+`image:purge` / `deleteBySource()` removes it — applications that delete sources call `deleteBySource()`, which they
+need anyway to avoid orphaned cache entries.
+
 ### Image processing
 
 - **ext-imagick directly** — thin wrapper, no third-party libraries
@@ -408,9 +414,9 @@ the largest entry. Default `sizes` attribute: `100vw`.
 
 **SVG flow** (path ends with `.svg`):
 
-1. `ImageSourceInterface::exists()` — source check → 404 if missing
-2. `CacheStorageInterface::has()` — cache check
-3. Cache miss: copy source to temp file → `write()` to cache
+1. `CacheStorageInterface::has()` — cache check → hit is served without touching the source
+2. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing
+3. Copy source to temp file → `writeLocked()` to cache
 4. `BinaryFileResponse` with immutable cache headers
 
 No HMAC, no Imagick processing.
@@ -419,10 +425,11 @@ No HMAC, no Imagick processing.
 
 1. `CachePathResolver::parse($path)` — extract parameters from URL
 2. `UrlSigner::verify()` — HMAC check → 403 if invalid
-3. `ImageSourceInterface::exists()` — source check → 404 if missing (unknown `@source/` name included)
-4. `WatermarkRegistry::has()` — watermark profile check → 400 if unknown profile
-5. `CacheStorageInterface::has()` — cache check (includes TTL in controller mode)
-6. Cache miss: process via `ImagickProcessor` to temp file → `write()` to cache
+3. `CacheStorageInterface::has()` — cache check (includes TTL in controller mode) → hit is served without touching
+   the source
+4. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing (unknown `@source/` name included)
+5. `WatermarkRegistry::has()` — watermark profile check → 400 if unknown profile
+6. Process via `ImagickProcessor` to temp file → `writeLocked()` to cache
 7. `BinaryFileResponse` with `Cache-Control: public, max-age=31536000, immutable`
 
 ### FrankenPHP / worker mode
@@ -463,7 +470,8 @@ the sole author.
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
   `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
-  404), avif/webp format generation, watermark processing, SVG passthrough, named sources (`@reference/` cache
+  404), cached variant of a deleted source still served (cache before source, raster and SVG), avif/webp format
+  generation, watermark processing, SVG passthrough, named sources (`@reference/` cache
   directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity

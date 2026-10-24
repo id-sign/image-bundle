@@ -377,6 +377,41 @@ class ImageControllerTest extends TestCase
         }
     }
 
+    public function testCachedVariantOfDeletedSourceIsServedUntilPurged(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            $path = $this->cachePathResolver->resolve('@reference/ref.jpg', 64, null, null, 80, 'webp');
+            self::assertSame(200, $controller(Request::create('/_image/'.$path), $path)->getStatusCode());
+
+            // The cache is checked before the source, so a hit never touches the source (same as try_files
+            // in public mode); the variant disappears with the TTL or deleteBySource(), not with the file.
+            unlink($referenceDir.'/ref.jpg');
+            self::assertSame(200, $controller(Request::create('/_image/'.$path), $path)->getStatusCode());
+
+            (new LocalFilesystemCacheStorage($this->cacheDir, 3600, 0o660, 0o770))->deleteBySource('@reference/ref.jpg');
+            self::assertSame(404, $controller(Request::create('/_image/'.$path), $path)->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
+    public function testCachedSvgOfDeletedSourceIsServedUntilPurged(): void
+    {
+        [$controller, $referenceDir] = $this->createControllerWithNamedSource();
+
+        try {
+            $path = '@reference/ref.svg';
+            self::assertSame(200, $controller(Request::create('/_image/'.$path), $path)->getStatusCode());
+
+            unlink($referenceDir.'/ref.svg');
+            self::assertSame(200, $controller(Request::create('/_image/'.$path), $path)->getStatusCode());
+        } finally {
+            $this->removeDir($referenceDir);
+        }
+    }
+
     public function testUnknownSourceReturns404(): void
     {
         [$controller, $referenceDir] = $this->createControllerWithNamedSource();
