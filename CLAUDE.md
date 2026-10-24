@@ -241,8 +241,12 @@ Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box thro
   (LCMS). `transformImageColorspace(sRGB)` alone — what the bundle did up to 0.3 — is a no-op there: ImageMagick
   reports an RGB-encoded image as sRGB whatever its profile says, so Display P3 photos (every iPhone), Adobe RGB and
   CMYK sources came out washed out once the profile was stripped. Profile-less images are assumed sRGB and get only
-  the colorspace transform (CMYK/gray without profile); a profile LCMS rejects falls back to that too. ~80 ns per
-  pixel (40 ms at 800×600), cache miss only. Target: the ICC's `sRGB2014.icc` in `resources/` — measured against the
+  the colorspace transform (CMYK/gray without profile); a profile LCMS rejects falls back to that too. Before
+  converting, `isSrgb()` converts a 16×16 probe pattern (6×6×6 cube + gray ramp) through the profile: ≤1/255
+  everywhere means one of the many sRGB byte-variants (HP, Apple/Google compact, GIMP built-in — 22 distinct blobs
+  among 47 RGB profiles in one sample, so a hash list would not do) and the image is left alone. Cost: 2 ms for an
+  sRGB-tagged 800×600 (was 36 ms, 0.5 s at 3840×2160), ~80 ns per pixel plus the probe for a real conversion (33 ms
+  at 800×600), 0 without a profile; cache miss only. Target: the ICC's `sRGB2014.icc` in `resources/` — measured against the
   sRGB profiles found in real files (HP "sRGB IEC61966-2.1", Apple/Google compact "sRGB"/"c2", GIMP built-in) the
   conversion changes ≤1/255 on a few values, i.e. nothing, while the deprecated "no black scaling" profile would lift
   dark tones by up to 30/255. Identical results on ImageMagick 6.9.12 (Ubuntu 24.04) and 7.1.2.

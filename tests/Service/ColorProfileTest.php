@@ -69,6 +69,27 @@ class ColorProfileTest extends TestCase
         self::assertSame([100, 200, 80], $imagick->exportImagePixels(2, 2, 1, 1, 'RGB', \Imagick::PIXEL_CHAR));
     }
 
+    /**
+     * The probe must tell the sRGB byte-variants (left alone, 2–4 ms) from everything else (converted): the compact
+     * sRGB profile of srgb-tagged.jpg is sRGB, the Display P3 profile of p3.jpg is not, the bundled profile is.
+     */
+    public function testIsSrgbTellsSrgbVariantsFromWideGamutProfiles(): void
+    {
+        self::assertTrue(ColorProfile::isSrgb(self::embeddedProfile(self::SRGB_TAGGED)));
+        self::assertFalse(ColorProfile::isSrgb(self::embeddedProfile(self::P3)));
+
+        $bundled = file_get_contents(ColorProfile::SRGB_PROFILE);
+        self::assertNotFalse($bundled);
+        self::assertTrue(ColorProfile::isSrgb($bundled));
+    }
+
+    public function testIsSrgbRejectsAnUnreadableProfile(): void
+    {
+        $this->expectException(\ImagickException::class);
+
+        ColorProfile::isSrgb(str_repeat('x', 300));
+    }
+
     public function testBundledProfileIsTheIccSrgb2014(): void
     {
         $profile = file_get_contents(ColorProfile::SRGB_PROFILE);
@@ -80,5 +101,15 @@ class ColorProfileTest extends TestCase
 
         self::assertSame('sRGB2014', $probe->getImageProperty('icc:description'));
         self::assertSame('Copyright International Color Consortium, 2015', $probe->getImageProperty('icc:copyright'));
+    }
+
+    private static function embeddedProfile(string $path): string
+    {
+        $imagick = new \Imagick($path);
+        $profile = $imagick->getImageProfiles('icc', true)['icc'] ?? null;
+        $imagick->clear();
+        self::assertIsString($profile);
+
+        return $profile;
     }
 }
