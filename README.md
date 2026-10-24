@@ -371,6 +371,10 @@ handle /_image/* {
 Every image request goes through PHP. Enables TTL-based cache invalidation -- expired variants are regenerated on the
 next request. Use this when you need access control or TTL-based refresh.
 
+In both modes a cached variant is served without consulting the source, so deleting a source file does not remove its
+variants: call `deleteBySource()` or `image:purge <src> --force` when a source is deleted (see
+[Cache management](#cache-management)). In controller mode the variants then expire with `cache.ttl` at the latest.
+
 ```yaml
 id_sign_image:
     serve_mode: 'controller'
@@ -653,6 +657,10 @@ at a reduced size when they are much larger than the output; dimensions are unch
 If you construct `ImagickProcessor`, `ImageMetadataReader` or `BlurPlaceholderGenerator` yourself rather than through
 the container, their cache-directory and permission arguments are gone: the two readers take a `CacheStorageInterface`
 and write `meta.json`/`blur.txt` atomically through it, the processor writes to the path it is given.
+
+In controller mode the controller now checks the cache before the source, so a cache hit costs no source lookup. A
+cached variant of a deleted source is served until `cache.ttl` expires or the cache is purged — the same behaviour
+public mode has always had with `try_files`. Call `deleteBySource()` when you delete a source image.
 
 ### Upgrading from v0.2.4 or earlier
 
