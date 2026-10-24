@@ -239,6 +239,27 @@ class ImagickProcessorTest extends TestCase
         self::assertSame([], $result->getImageProfiles('icc', false));
     }
 
+    /**
+     * frames.gif: 60x40 red first frame, 1x1 blue last frame. pingImage() stops on the last frame, so a per-frame
+     * pixel check would see 1 pixel while readImage() decodes everything; and the variant must come from the first
+     * frame — before the fix the LAST frame was processed (a 30x30 blue square here).
+     */
+    public function testMultiFrameSourceIsCountedWholeAndReadFromTheFirstFrame(): void
+    {
+        $output = $this->tmpPath('png');
+
+        $this->processor->process(__DIR__.'/../Fixtures/frames.gif', $output, 30, null, null, 'png', 80);
+
+        $result = new \Imagick($output);
+        self::assertSame([30, 20], [$result->getImageWidth(), $result->getImageHeight()]);
+        self::assertEqualsWithDelta([255, 0, 0], $result->exportImagePixels(15, 10, 1, 1, 'RGB', \Imagick::PIXEL_CHAR), 1);
+
+        // 2 401 pixels in total, 1 on the frame the ping stops at.
+        $this->expectException(SourceTooLargeException::class);
+
+        (new ImagickProcessor(new SourceSizeValidator(0, 2_400)))->process(__DIR__.'/../Fixtures/frames.gif', $this->tmpPath('png'), 30, null, null, 'png', 80);
+    }
+
     public function testSrgbTaggedSourceKeepsItsColours(): void
     {
         $output = $this->tmpPath('png');

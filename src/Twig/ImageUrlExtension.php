@@ -64,7 +64,7 @@ class ImageUrlExtension extends AbstractExtension
         $resolvedLossless = $lossless ?? $this->globalLossless;
 
         $resolvedHeight = $height;
-        $isSvg = 'svg' === strtolower(pathinfo($src, \PATHINFO_EXTENSION));
+        $isSvg = SourcePath::isSvg($src);
 
         if (null === $height && ($autoDimensions ?? $this->globalAutoDimensions) && !$isSvg) {
             $resolvedHeight = $this->metadataReader->calculateHeight($src, $width);

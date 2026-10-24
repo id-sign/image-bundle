@@ -67,7 +67,7 @@ class ImageComponent
     public function postMount(): void
     {
         $this->src = SourcePath::normalize($this->src);
-        $this->svg = 'svg' === strtolower(pathinfo($this->src, \PATHINFO_EXTENSION));
+        $this->svg = SourcePath::isSvg($this->src);
 
         if ($this->width <= 0) {
             throw new \InvalidArgumentException(\sprintf('The "width" prop is required and must be > 0 on <twig:Image src="%s" />. It is the intrinsic width of the generated image file in pixels — pick the largest size the image will ever render at. See docs for guidance.', $this->src));
