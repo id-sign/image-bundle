@@ -421,6 +421,74 @@ security:
 In public mode, the web server serves cached files directly and bypasses PHP — Symfony's security firewall is not
 involved. Use controller mode when access control is required.
 
+### Handing cached files to the web server (X-Accel-Redirect / X-Sendfile)
+
+In controller mode PHP streams every cached file through Symfony's `BinaryFileResponse`. With `X-Accel-Redirect`
+(nginx, FrankenPHP) or `X-Sendfile` (Apache `mod_xsendfile`) PHP answers with a header only and the web server sends
+the file itself: `sendfile`, range requests and slow clients stop being PHP's business, while the firewall and the
+controller still run for every request, so access control is unchanged. With nginx + PHP-FPM the worker is already
+released once nginx has buffered the response, so the gain there is the CPU and memory of copying the file through PHP
+and FastCGI; with FrankenPHP, where PHP writes straight to the client connection, it also frees the PHP thread from slow
+clients. The bundle needs no configuration for this — it is the standard `BinaryFileResponse` support.
+
+1. Keep `cache.path` outside the document root (recommended for controller mode anyway) and let Symfony trust the
+   `X-Sendfile-Type` request header:
+
+   ```yaml
+   # config/packages/framework.yaml
+   framework:
+       trust_x_sendfile_type_header: true   # Symfony 7.2+: or SYMFONY_TRUST_X_SENDFILE_TYPE_HEADER=1
+   ```
+
+2. Tell the web server to pass the type and the path mapping to PHP and to serve the cache directory from an internal
+   location. nginx:
+
+   ```nginx
+   location ~ ^/index\.php(/|$) {
+       # ... fastcgi_pass etc.
+       fastcgi_param HTTP_X_SENDFILE_TYPE X-Accel-Redirect;
+       fastcgi_param HTTP_X_ACCEL_MAPPING /var/www/app/var/image-cache/=/_image_internal/;
+   }
+
+   location /_image_internal/ {
+       internal;
+       alias /var/www/app/var/image-cache/;
+   }
+   ```
+
+   nginx keeps `Content-Type` and `Cache-Control` from the PHP response, so the `immutable` caching headers survive.
+
+   FrankenPHP (from its [X-Sendfile documentation](https://frankenphp.dev/docs/x-sendfile/), paths adapted to a cache
+   in `var/image-cache`):
+
+   ```caddyfile
+   root public/
+
+   request_header X-Sendfile-Type x-accel-redirect
+   request_header X-Accel-Mapping ../var/image-cache=/image-cache
+
+   intercept {
+       @accel header X-Accel-Redirect *
+       handle_response @accel {
+           root ../var/image-cache/
+           rewrite * {resp.header.X-Accel-Redirect}
+           method * GET
+           header -X-Accel-Redirect
+           file_server
+       }
+   }
+
+   php_server
+   ```
+
+   Apache with `mod_xsendfile`:
+
+   ```apache
+   XSendFile On
+   XSendFilePath /var/www/app/var/image-cache
+   RequestHeader set X-Sendfile-Type X-Sendfile
+   ```
+
 ## URL security
 
 All **raster** image URLs are signed with HMAC-SHA256 derived from `kernel.secret`. The signature is part of the URL

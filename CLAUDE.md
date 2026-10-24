@@ -204,6 +204,9 @@ round-trip for a remote source). A variant of a deleted source therefore lives u
 `image:purge` / `deleteBySource()` removes it — applications that delete sources call `deleteBySource()`, which they
 need anyway to avoid orphaned cache entries.
 
+Controller mode works with `X-Accel-Redirect` / `X-Sendfile` out of the box through `BinaryFileResponse`
+(`framework.trust_x_sendfile_type_header` + web server mapping, documented in README); no bundle code is involved.
+
 ### Image processing
 
 - **ext-imagick directly** — thin wrapper, no third-party libraries
