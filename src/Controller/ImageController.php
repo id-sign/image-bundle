@@ -71,7 +71,14 @@ class ImageController
             });
         }
 
-        return $this->buildResponse($src, 'image/svg+xml');
+        $response = $this->buildResponse($src, 'image/svg+xml');
+        // An SVG can carry <script>; loaded as a document from the application's origin it would run there. The
+        // sandbox blocks that, nosniff keeps the type as sent. Covers controller mode and the first (uncached)
+        // response in public mode; public-mode cache hits never reach PHP, so the web server adds the same there.
+        $response->headers->set('Content-Security-Policy', 'sandbox');
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+
+        return $response;
     }
 
     private function serveRaster(string $path): Response

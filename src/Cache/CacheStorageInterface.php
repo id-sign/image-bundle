@@ -17,7 +17,9 @@ interface CacheStorageInterface
     public function getAbsolutePath(string $cachePath): string;
 
     /**
-     * Write a processed image to cache (moves source file to cache location).
+     * Move a finished file into the cache: staged next to the target, then renamed, so a reader sees either nothing
+     * or the whole file. Takes no lock — meta.json and blur.txt come through here from page renders, which must
+     * never wait for the encode of a variant that holds the directory lock (see writeLocked()).
      */
     public function write(string $cachePath, string $sourcePath): void;
 
@@ -25,7 +27,8 @@ interface CacheStorageInterface
      * Acquire a lock on the variant's directory, re-check cache, and invoke $writer to produce the
      * file if still missing. Protects against thundering herd — N concurrent requests for the
      * same uncached variant cause only one write; others block on the lock and re-serve
-     * the produced file on retry. Also used for meta.json and blur.txt, so they are written atomically.
+     * the produced file on retry. Variants and SVG passthrough files go through here; meta.json and blur.txt
+     * use the lock-free write() instead.
      *
      * Implementations may skip the lock if the underlying backend does not support it
      * cheaply (e.g. a remote-storage backend may accept best-effort concurrent writes).

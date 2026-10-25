@@ -11,7 +11,7 @@ interfaces for custom image sources and cache storage. Ready for FrankenPHP work
 ## Requirements
 
 - PHP 8.2+
-- Symfony 7.4+
+- Symfony ^7.4 | ^8.0
 - ext-imagick
 
 ## Installation
@@ -61,7 +61,7 @@ id_sign_image:
     # Cache settings
     cache:
         ttl: 2592000            # 30 days in seconds (used in controller mode)
-        path: '%kernel.project_dir%/public/_image'
+        path: '%kernel.project_dir%/public/_image'  # controller mode with access control: move outside public/
 
     # Blur placeholder
     blur:
@@ -122,15 +122,20 @@ id_sign_image:
 Output:
 
 ```html
-
 <picture>
-    <source type="image/avif" srcset="/_image/.../640_480_none_80.avif 640w, /_image/.../800_600_none_80.avif 800w"
+    <source type="image/avif"
+            srcset="/_image/.../320_auto_none_80.avif 320w, /_image/.../480_auto_none_80.avif 480w, /_image/.../640_auto_none_80.avif 640w, /_image/.../750_auto_none_80.avif 750w, /_image/.../800_auto_none_80.avif 800w"
             sizes="100vw">
-    <source type="image/webp" srcset="/_image/.../640_480_none_80.webp 640w, /_image/.../800_600_none_80.webp 800w"
+    <source type="image/webp"
+            srcset="/_image/.../320_auto_none_80.webp 320w, /_image/.../480_auto_none_80.webp 480w, /_image/.../640_auto_none_80.webp 640w, /_image/.../750_auto_none_80.webp 750w, /_image/.../800_auto_none_80.webp 800w"
             sizes="100vw">
-    <img src="/_image/.../800_600_none_80.jpeg" width="800" height="600" alt="A photo" decoding="async"/>
+    <img src="/_image/.../800_auto_none_80.jpeg" width="800" height="600" alt="A photo" decoding="async"/>
 </picture>
 ```
+
+`height` without `fit` is a layout hint: it lands on `<img>` for CLS prevention while the server resizes by `width`
+only (`auto` in the URL) and keeps the source aspect ratio — see [`height`](#height). One srcset candidate per default
+`device_sizes` breakpoint below `width`, plus `width` itself — see [Picking sizes](#picking-sizes).
 
 ### With blur placeholder and fit mode
 
@@ -393,6 +398,11 @@ request to PHP (its built-in `try_files {path} {path}/index.php index.php`), and
 Every image request goes through PHP. Enables TTL-based cache invalidation -- expired variants are regenerated on the
 next request. Use this when you need access control or TTL-based refresh.
 
+For access control, move `cache.path` out of the document root. With the default `%kernel.project_dir%/public/_image`
+a standard Symfony vhost (`try_files $uri /index.php$is_args$args`) serves an already cached variant as a static file:
+the first authorized visitor fills the cache, everybody after them gets the file without PHP, and the firewall never
+sees the request.
+
 In both modes a cached variant is served without consulting the source, so deleting a source file does not remove its
 variants: call `deleteBySource()` or `image:purge <src> --force` when a source is deleted (see
 [Cache management](#cache-management)). In controller mode the variants then expire with `cache.ttl` at the latest.
@@ -402,6 +412,7 @@ id_sign_image:
     serve_mode: 'controller'
     cache:
         ttl: 86400  # Re-generate after 24 hours
+        path: '%kernel.project_dir%/var/image-cache'  # outside public/, see above
 ```
 
 ### Custom route prefix
@@ -430,6 +441,8 @@ Use controller mode with Symfony security to require authentication for image ac
 # config/packages/id_sign_image.yaml
 id_sign_image:
     serve_mode: 'controller'
+    cache:
+        path: '%kernel.project_dir%/var/image-cache'  # must not be under public/
 ```
 
 ```yaml
@@ -440,7 +453,9 @@ security:
 ```
 
 In public mode, the web server serves cached files directly and bypasses PHP — Symfony's security firewall is not
-involved. Use controller mode when access control is required.
+involved. The same happens in controller mode while `cache.path` stays under the document root: the web server's
+`try_files` finds the cached variant and serves it without PHP. Controller mode with the cache outside `public/` is
+what makes the firewall see every request.
 
 ### Handing cached files to the web server (X-Accel-Redirect / X-Sendfile)
 
@@ -452,8 +467,8 @@ released once nginx has buffered the response, so the gain there is the CPU and 
 and FastCGI; with FrankenPHP, where PHP writes straight to the client connection, it also frees the PHP thread from slow
 clients. The bundle needs no configuration for this — it is the standard `BinaryFileResponse` support.
 
-1. Keep `cache.path` outside the document root (recommended for controller mode anyway) and let Symfony trust the
-   `X-Sendfile-Type` request header:
+1. Keep `cache.path` outside the document root (required for access control in controller mode, see above) and let
+   Symfony trust the `X-Sendfile-Type` request header:
 
    ```yaml
    # config/packages/framework.yaml
@@ -474,10 +489,16 @@ clients. The bundle needs no configuration for this — it is the standard `Bina
    location /_image_internal/ {
        internal;
        alias /var/www/app/var/image-cache/;
+       add_header X-Content-Type-Options "nosniff" always;
+       add_header Content-Security-Policy $image_svg_csp always;  # "sandbox" for .svg, empty = not sent otherwise
    }
    ```
 
-   nginx keeps `Content-Type` and `Cache-Control` from the PHP response, so the `immutable` caching headers survive.
+   with, at `http` level, `map $uri $image_svg_csp { ~*\.svg$ "sandbox"; default ""; }`. nginx keeps `Content-Type`
+   and `Cache-Control` from the PHP response, so the `immutable` caching headers survive, but it drops the rest —
+   including the SVG security headers the controller sets (see
+   [Webserver hardening for SVG](#webserver-hardening-for-svg)), hence the two `add_header` lines. Check the
+   responses of the FrankenPHP and Apache setups below for the same two headers (`curl -I`).
 
    FrankenPHP (from its [X-Sendfile documentation](https://frankenphp.dev/docs/x-sendfile/), paths adapted to a cache
    in `var/image-cache`):
@@ -540,8 +561,9 @@ a **publicly accessible asset tree**. Any file under any of them can be fetched 
 publishes it. The bundle does not enforce
 authorization. If you need:
 
-- **Authorization per user/role:** use `serve_mode: controller` and add a Symfony firewall / `#[IsGranted]` in front of
-  the bundle route. In public mode the web server serves cached files directly and bypasses Symfony security.
+- **Authorization per user/role:** use `serve_mode: controller` with `cache.path` outside the document root and add a
+  Symfony firewall / `#[IsGranted]` in front of the bundle route. In public mode — and in controller mode with the
+  cache under `public/` — the web server serves cached files directly and bypasses Symfony security.
 - **Authorization per image:** enforce it before the bundle route as well — a firewall rule, a request listener or a
   controller of your own that checks the `src` and forwards. A custom `ImageSourceInterface` cannot do it: a cached
   variant is served without consulting the source (see [Serve modes](#serve-modes)), so an `exists()` that returns
@@ -574,16 +596,20 @@ ImageMagick policy.
 ### SVG and XSS
 
 SVG files can contain `<script>` and event handlers that execute in your origin when the SVG is loaded as a top-level
-document. The bundle serves SVGs as-is — it does not strip scripts. **If your source directory can receive
-user-uploaded SVGs, you must either sanitize before storage, or harden the served response** (see
-[Webserver hardening for SVG](#webserver-hardening-for-svg) below).
+document. The bundle serves SVGs as-is — it does not strip scripts — but the controller sends them with
+`Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`, which block script execution. In public mode
+cache hits never reach the controller, so the web server has to add the same headers (see
+[Webserver hardening for SVG](#webserver-hardening-for-svg) below). **If your source directory can receive
+user-uploaded SVGs, either sanitize before storage or make sure every served response carries those headers.**
 
 ## Webserver hardening for SVG
 
-The bundle sends SVG with `Content-Type: image/svg+xml` and nothing else; security headers are the web server's job in
-**both** serve modes — in public mode PHP is not involved at all, in controller mode the web server still sees the URL
-and can match it. To block script execution in served SVGs, add a `Content-Security-Policy: sandbox` header in the web
-server configuration. Match the extension case-insensitively: the bundle serves `logo.SVG` as SVG too.
+The controller sends SVG with `Content-Type: image/svg+xml`, `Content-Security-Policy: sandbox` and
+`X-Content-Type-Options: nosniff`. In **controller mode** that is every response — unless the file is handed over with
+X-Accel-Redirect, which drops those headers, see
+[above](#handing-cached-files-to-the-web-server-x-accel-redirect--x-sendfile). In **public mode** PHP answers only the
+first request for an SVG; every cache hit is served by the web server, which has to add the same two headers itself.
+Match the extension case-insensitively: the bundle serves `logo.SVG` as SVG too.
 
 ### Nginx
 
@@ -595,9 +621,14 @@ location /_image/ {
 location ~* ^/_image/.+\.svg$ {
     add_header Content-Security-Policy "sandbox" always;
     add_header X-Content-Type-Options "nosniff" always;
-    try_files $uri =404;
+    try_files $uri @symfony;
 }
 ```
+
+A regex `location` takes precedence over the prefix one, so the SVG block needs its own `try_files` with the
+`@symfony` fallback — with `=404` an SVG that is not cached yet would never reach PHP and could never be cached. The
+`add_header` lines do not apply to the response from the named location; that one comes from the controller with its
+own headers.
 
 ### Apache
 
@@ -617,11 +648,12 @@ header @image_svg X-Content-Type-Options "nosniff"
 ```
 
 `Content-Security-Policy: sandbox` (with no directive value) applies the strictest sandbox: blocks scripts, forms,
-popups, plugins, and same-origin access. The SVG still renders as an image. This is cheap (single header in response),
-effective against `<script>` and `on*` handlers, and independent of the bundle.
+popups, plugins, and same-origin access. The SVG still renders as an image. This is cheap (single header in response)
+and effective against `<script>` and `on*` handlers.
 
-If you cannot configure the web server and SVG hardening is a requirement, sanitize SVGs before they land in the source
-directory — e.g. using [`enshrined/svg-sanitize`](https://github.com/darylldoyle/svg-sanitize) on upload.
+If you cannot configure the web server in public mode and SVG hardening is a requirement, sanitize SVGs before they
+land in the source directory — e.g. using [`enshrined/svg-sanitize`](https://github.com/darylldoyle/svg-sanitize) on
+upload — or use controller mode.
 
 ## Validating uploaded images
 
@@ -645,7 +677,9 @@ class Product
 }
 ```
 
-The bundle's `max_source_bytes` and `max_width` are runtime safety nets, not replacements for proper upload validation.
+The bundle's `max_source_bytes`, `max_source_pixels` and `max_width` are runtime safety nets, not replacements for
+proper upload validation: a source above one of the first two answers `413` and nothing is cached — the wrong moment to
+learn that an upload was too large.
 
 ## Image sources
 
@@ -783,10 +817,14 @@ washed-out colours. The URLs are unchanged, so purge them:
 
 The controller generates only the configured `formats` plus the source's fallback format; a URL with another extension
 answers `404` (it used to produce the variant), and `.jpg` is no longer accepted as a variant extension (the bundle
-always generated `.jpeg`). A multi-frame source (GIF, APNG, animated WebP, multi-page TIFF) is now processed from its
-first frame — it used to be the last — and all frames count towards `max_source_pixels`. `image_url()` and
-`ImageUrlGenerator` return the passthrough URL for an `.svg` source instead of a signed raster URL. Responses carry an
-explicit `Content-Type` (previously guessed through `symfony/mime`, which the bundle never required). If a custom
+always generated `.jpeg`); `image_url(format=…)` and `ImageUrlGenerator::generate()` throw an
+`InvalidArgumentException` for a format the controller would not serve, and without a request they return the source's
+fallback format when `webp` is not configured (previously always `.webp`). A multi-frame source (GIF, APNG, animated
+WebP, multi-page TIFF) is now processed from its first frame — it used to be the last — and all frames count towards
+`max_source_pixels`. `image_url()` and `ImageUrlGenerator` return the passthrough URL for an `.svg` source instead of a
+signed raster URL. Responses carry an explicit `Content-Type` (previously guessed through `symfony/mime`, which the
+bundle never required), and SVG responses from the controller add `Content-Security-Policy: sandbox` and
+`X-Content-Type-Options: nosniff`. If a custom
 `ImageSourceInterface` enforced per-image authorization in `exists()`, move it in front of the route — see
 [Security model](#security-model).
 
@@ -839,7 +877,7 @@ class ImageApiController
         // Negotiate format from Accept header (AVIF > WebP > original)
         $url = $this->imageUrlGenerator->generateFromRequest($request, 'uploads/photo.jpg', 800, 600, 'cover');
 
-        // Or specify format explicitly
+        // Or specify a format explicitly: a configured one or the source's fallback, anything else throws
         $url = $this->imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 'webp');
 
         return new JsonResponse(['image' => $url]);
@@ -851,7 +889,10 @@ class ImageApiController
 
 For contexts where you need a single image URL instead of a full `<picture>` tag — og tags, emails, JSON-LD, etc.
 For an `.svg` source it returns the passthrough URL (`/_image/icons/logo.svg`), like `<twig:Image>`; the same holds for
-`ImageUrlGenerator`.
+`ImageUrlGenerator`. `format` must be one the controller serves — one of the configured `formats` or the source's
+fallback format (see [URL security](#url-security)); anything else throws an `InvalidArgumentException` instead of
+returning a URL that answers `404`. Without `format` and without a request to negotiate from (console command, e-mail
+rendered in a worker) the URL is `webp`, or the source's fallback format when `webp` is not in `formats`.
 
 ```twig
 {# Format negotiated from current request (AVIF > WebP > original) #}
@@ -874,7 +915,7 @@ For an `.svg` source it returns the passthrough URL (`/_image/icons/logo.svg`), 
 | `height`         | int           | no       | Output height (auto-calculated if `autoDimensions` enabled)       |
 | `fit`            | string        | no       | `cover`, `contain`, or `scale-down`                               |
 | `quality`        | int           | no       | Output quality 1-100 (default from config)                        |
-| `format`         | string        | no       | Output format (`avif`, `webp`, `jpeg`, `png`). If omitted, negotiated from request |
+| `format`         | string        | no       | A configured format or the source's fallback (`jpeg`, `png`, …), else throws. Omitted: negotiated from the request, `webp` without one |
 | `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default         |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config) |
 | `lossless`       | bool          | no       | Lossless encoding for WebP/AVIF output (overrides global config)  |

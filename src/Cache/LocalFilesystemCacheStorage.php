@@ -77,7 +77,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
         $this->ensureDir($dir);
 
         // flock() on the target directory itself: no lock files to leave behind or to purge, and the
-        // variants, meta.json and blur.txt of one source share a single lock.
+        // variants of one source share a single lock (meta.json and blur.txt go through the lock-free write()).
         $lockHandle = @fopen($dir, 'r');
 
         // If we can't obtain a lock handle (Windows, exotic FS), fall back to an unlocked write.

@@ -72,6 +72,21 @@ class ImageUrlExtensionTest extends TestCase
         self::assertStringEndsWith('.webp', $url);
     }
 
+    public function testWithoutRequestAndWithoutWebpConfiguredUsesTheSourceFallback(): void
+    {
+        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image');
+        $extension = new ImageUrlExtension($generator, $this->metadataReader, $this->requestStack, 80, null, false, 4096, false);
+
+        self::assertStringEndsWith('.jpeg', $extension->imageUrl('photo.jpg', 800));
+    }
+
+    public function testExplicitFormatTheControllerWouldNotServeThrows(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->extension->imageUrl('photo.jpg', 800, format: 'png');
+    }
+
     public function testFallsBackToOriginalFormatWhenNoModernSupport(): void
     {
         $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'image/jpeg']);
