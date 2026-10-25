@@ -587,6 +587,25 @@ class ImageComponentTest extends TestCase
         self::assertSame($plain->getSources(), $prefixed->getSources());
     }
 
+    public function testLeadingSlashRendersIdenticalMarkupToNoSlash(): void
+    {
+        // The source and the cache storage ignore a leading slash, but it would be signed and produce
+        // "/_image//uploads/…" — nginx merges the slashes and the signature no longer matches (403).
+        $plain = $this->createComponentWithStubs();
+        $plain->src = 'uploads/photo.jpg';
+        $plain->width = 800;
+        $plain->postMount();
+
+        $slashed = $this->createComponentWithStubs();
+        $slashed->src = '/uploads/photo.jpg';
+        $slashed->width = 800;
+        $slashed->postMount();
+
+        self::assertSame('uploads/photo.jpg', $slashed->src);
+        self::assertSame($plain->getFallbackSrc(), $slashed->getFallbackSrc());
+        self::assertSame($plain->getSources(), $slashed->getSources());
+    }
+
     public function testDefaultSourcePrefixIsStrippedBeforeMetadataLookup(): void
     {
         $component = $this->createComponent(true);

@@ -28,7 +28,7 @@ class ImageUrlExtensionTest extends TestCase
         $signer = new UrlSigner('test-secret');
         $resolver = new CachePathResolver($signer);
         $negotiator = new FormatNegotiator(['avif', 'webp']);
-        $generator = new ImageUrlGenerator($resolver, $negotiator, '/_image');
+        $generator = new ImageUrlGenerator($resolver, $negotiator, '/_image', 4096);
 
         $this->metadataReader = $this->createStub(ImageMetadataReader::class);
         $this->requestStack = new RequestStack();
@@ -74,7 +74,7 @@ class ImageUrlExtensionTest extends TestCase
 
     public function testWithoutRequestAndWithoutWebpConfiguredUsesTheSourceFallback(): void
     {
-        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image');
+        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image', 4096);
         $extension = new ImageUrlExtension($generator, $this->metadataReader, $this->requestStack, 80, null, false, 4096, false);
 
         self::assertStringEndsWith('.jpeg', $extension->imageUrl('photo.jpg', 800));
@@ -402,7 +402,7 @@ class ImageUrlExtensionTest extends TestCase
         $resolver = new CachePathResolver($signer);
         $negotiator = new FormatNegotiator(['avif', 'webp']);
 
-        return new ImageUrlGenerator($resolver, $negotiator, '/_image');
+        return new ImageUrlGenerator($resolver, $negotiator, '/_image', 4096);
     }
 
     public function testDefaultSourcePrefixYieldsTheSameUrlAsNoPrefix(): void
@@ -424,7 +424,7 @@ class ImageUrlExtensionTest extends TestCase
             ->willReturn(600);
 
         $extension = new ImageUrlExtension(
-            new ImageUrlGenerator($resolver, new FormatNegotiator(['avif', 'webp']), '/_image'),
+            new ImageUrlGenerator($resolver, new FormatNegotiator(['avif', 'webp']), '/_image', 4096),
             $metadataReader,
             new RequestStack(),
             80,

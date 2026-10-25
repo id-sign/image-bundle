@@ -160,9 +160,12 @@ Sources are named. The `ImageSourceInterface` alias points to `NamedImageSource`
 else — URL, HMAC payload, cache directory, `meta.json`/`blur.txt` location, `image:purge` — so no other layer knows
 about sources, and `@reference/logo.png` and `logo.png` can never share a cache entry.
 
-`SourcePath::normalize()` strips `@default/` at the four entry points where `src` comes from user code
-(`ImageComponent::postMount()`, `ImageUrlExtension::imageUrl()`, `ImageUrlGenerator::generate()`,
-`PurgeCacheCommand`), so `@default/x.jpg` and `x.jpg` yield one URL and one cache directory. It strips in a loop, so it
+`SourcePath::normalize()` strips a leading `/` and `@default/` at the four entry points where `src` comes from user
+code (`ImageComponent::postMount()`, `ImageUrlExtension::imageUrl()`, `ImageUrlGenerator::generate()`,
+`PurgeCacheCommand`), so `@default/x.jpg`, `/x.jpg` and `x.jpg` yield one URL and one cache directory. The slash
+matters: `LocalFilesystemSource` and the cache storage ignore it, but it would stay in the signed payload and produce
+`/_image//x.jpg/…` — nginx merges the slashes (`merge_slashes` is on by default), the signature no longer matches and
+every request answers 403, while the Symfony dev server keeps the double slash and works. It strips in a loop, so it
 is idempotent — `image_url()` normalizes and `ImageUrlGenerator::generate()` normalizes again. `NamedImageSource`
 deliberately rejects `@default/` and unknown names: `exists()` returns false, `getAbsolutePath()` throws
 `UnknownImageSourceException` (an `InvalidArgumentException`, same contract as `..`; `forDefaultPrefix()` carries a
@@ -187,7 +190,8 @@ separator) lives in each `LocalFilesystemSource` and in the cache storage, so it
 answer 500 instead of 404. `$default` in `NamedImageSource` must stay explicitly bound in `services.yaml` — autowiring
 by type would resolve to the interface alias, i.e. to the composite itself.
 
-Performance: a warm-cache render costs one `str_starts_with` per image (normalization); the prefix split (~0.5 μs,
+Performance: a warm-cache render costs one `ltrim()` and one `str_starts_with` per image (normalization); the prefix
+split (~0.5 μs,
 about one HMAC) runs only where `exists()`/`getAbsolutePath()` were already called — on cache miss. Public-mode cache
 hits never reach PHP, so the feature is free there.
 
@@ -446,6 +450,10 @@ both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 
 Used for API responses, emails, or any context outside Twig templates. Unlike `<twig:Image>` and `image_url()`, it
 does not replace a `scale-down` width/height with the source dimensions, so its URL can be a separate cache variant.
+It shares their other rules: `width` must be 1…`max_width` (the controller trusts the signature, so the cap has to sit
+where URLs are made — the generator has its own `$maxWidth` argument, bound in `services.yaml`), and `height` is a
+processing dimension only together with `fit` — a signed `_800_600_none_` would reach `fitExact()` and distort the
+image, while `image_url()` emits `_800_auto_none_` for the same arguments.
 For an `.svg` source (`SourcePath::isSvg()`, the one rule shared with the component, `image_url()` and the controller)
 it returns the passthrough URL — a signed raster URL would make the controller rasterize an untrusted SVG and its
 variants directory would collide with the passthrough cache file. `generate()` refuses a `$format` the controller would
@@ -494,7 +502,8 @@ the largest entry. Default `sizes` attribute: `100vw`.
 
 No HMAC, no Imagick processing. The two security headers cost nothing and cover controller mode and the first (uncached)
 response in public mode; public-mode cache hits never reach PHP, so the web server adds the same headers there (README
-"Webserver hardening for SVG" — the nginx SVG `location` must keep the `@symfony` fallback, a regex location wins over
+"Webserver hardening for SVG" — the nginx SVG `location` must keep the `/index.php$is_args$args` fallback of the
+standard Symfony vhost, a regex location wins over
 the prefix one and `=404` would keep uncached SVGs from ever reaching PHP), and nginx's X-Accel-Redirect keeps only
 `Content-Type`/`Cache-Control`-class headers, so the internal location adds them too. The type is set explicitly so
 nothing is sniffed from the content.
@@ -559,7 +568,8 @@ the sole author.
   `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
   `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
-  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, SVG passthrough), `ImagickProcessor`
+  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough),
+  `ImagickProcessor`
   (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width),
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
   `ExifOrientation` is covered through these two
@@ -575,7 +585,9 @@ the sole author.
   `tests/Fixtures/p3.jpg` (64x48 flat rgb(100,199,80) with an embedded Display P3 profile — rgb(46,202,57) in sRGB),
   `tests/Fixtures/srgb-tagged.jpg` (same pixels with a compact sRGB profile; both profiles CC0 from
   Compact-ICC-Profiles), `tests/Fixtures/adobergb-r03.jpg` (same pixels, no profile, EXIF `InteropIndex=R03` written
-  with exiftool — rgb(0,200,67) in sRGB), `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
+  with exiftool — rgb(0,200,67) in sRGB), `tests/Fixtures/frames.gif` (two frames, 60x40 first and 1x1 last —
+  `pingImage()` stops on the last frame; the all-frames `max_source_pixels` and first-frame tests),
+  `tests/Fixtures/logo.svg`, `tests/Fixtures/watermark.png`
 
 ## Configuration reference
 

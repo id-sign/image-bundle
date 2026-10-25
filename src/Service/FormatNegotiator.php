@@ -83,16 +83,16 @@ class FormatNegotiator
     }
 
     /**
-     * Get the MIME type for a given format.
+     * Get the MIME type for a given output format — one of the four variant extensions CachePathResolver::parse()
+     * accepts. "jpg" is never an output format: the bundle writes "jpeg" (see the parse pattern).
      */
     public static function getMimeType(string $format): string
     {
         return match ($format) {
             'avif' => 'image/avif',
             'webp' => 'image/webp',
-            'jpeg', 'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
             'png' => 'image/png',
-            'gif' => 'image/gif',
             default => 'application/octet-stream',
         };
     }

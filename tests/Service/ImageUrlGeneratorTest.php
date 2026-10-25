@@ -21,7 +21,7 @@ class ImageUrlGeneratorTest extends TestCase
         $resolver = new CachePathResolver($signer);
         $negotiator = new FormatNegotiator(['avif', 'webp']);
 
-        $this->generator = new ImageUrlGenerator($resolver, $negotiator, '/_image');
+        $this->generator = new ImageUrlGenerator($resolver, $negotiator, '/_image', 4096);
     }
 
     public function testGenerateReturnsUrlWithPrefix(): void
@@ -112,10 +112,46 @@ class ImageUrlGeneratorTest extends TestCase
     public function testWithoutFormatAndWithoutWebpConfiguredTheSourceFallbackIsUsed(): void
     {
         // A literal 'webp' default would produce URLs the controller answers with 404.
-        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image');
+        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image', 4096);
 
         self::assertStringEndsWith('.jpeg', $generator->generate('uploads/photo.jpg', 800));
         self::assertStringEndsWith('.png', $generator->generate('icons/logo.png', 800));
+    }
+
+    /**
+     * Same rule as <twig:Image> and image_url(): without fit the server resizes by width only. A signed
+     * "_800_600_none_" would make the processor resize to exactly 800×600 and distort the image.
+     */
+    public function testHeightWithoutFitIsNotPartOfTheUrl(): void
+    {
+        self::assertStringContainsString('_800_auto_none_80.', $this->generator->generate('uploads/photo.jpg', 800, 600));
+        self::assertStringContainsString('_800_600_cover_80.', $this->generator->generate('uploads/photo.jpg', 800, 600, 'cover'));
+        self::assertStringContainsString('_800_auto_none_80.', $this->generator->generateFromRequest(Request::create('/'), 'uploads/photo.jpg', 800, 600));
+    }
+
+    public function testWidthAboveMaxWidthIsRefused(): void
+    {
+        // The controller trusts the signature, so the max_width cap has to sit where URLs are made.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('exceeds the configured id_sign_image.max_width (4096)');
+
+        $this->generator->generate('uploads/photo.jpg', 4097);
+    }
+
+    public function testWidthMustBePositive(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('width > 0');
+
+        $this->generator->generate('uploads/photo.jpg', 0);
+    }
+
+    public function testLeadingSlashYieldsTheSameUrlAsNoSlash(): void
+    {
+        self::assertSame(
+            $this->generator->generate('uploads/photo.jpg', 800, null, null, 80, 'webp'),
+            $this->generator->generate('/uploads/photo.jpg', 800, null, null, 80, 'webp'),
+        );
     }
 
     public function testSvgSourceYieldsThePassthroughUrl(): void

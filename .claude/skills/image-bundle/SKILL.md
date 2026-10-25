@@ -6,7 +6,8 @@ description: Automatic image optimization for Symfony — responsive images, for
 # ImageBundle
 
 Symfony bundle that optimizes images automatically. Generates `<picture>` tags with responsive `srcset`, modern
-formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. All URLs are HMAC-signed for security.
+formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. Raster URLs are HMAC-signed; SVG files
+are passed through unsigned and unprocessed.
 
 ## Component
 
@@ -41,6 +42,10 @@ formats (AVIF/WebP), optional blur placeholders, and named watermark profiles. A
 | `lossless`       | bool          | no       | Use lossless encoding for WebP/AVIF output (overrides global config)                           |
 
 All other attributes pass through to `<img>`: `alt`, `class`, `id`, `loading`, `sizes`, `data-*`, `aria-*`, etc.
+
+Syntax: `attr="…"` passes a string (coerced for `int` props), `:attr="…"` a Twig expression (`:watermark="false"`,
+`:width="image.width"`), a bare attribute `true` (`blur`, `lossless`). Props can also be a named map:
+`{{ component('Image', { src: image.path, width: 800, fit: 'cover', alt: image.title }) }}`.
 
 Default: `decoding="async"`. No default `loading`.
 
@@ -192,7 +197,8 @@ Rules:
   (a `%parameter%` counts).
 - The prefix stays in the URL (`/_image/%40reference/…`), in the HMAC signature and in the cache directory
   (`public/_image/@reference/screenshot.png/`), so `@reference/logo.png` and `logo.png` never share a cache entry.
-  `@default/photo.jpg` is normalized to `photo.jpg`.
+  `@default/photo.jpg` and `/photo.jpg` are normalized to `photo.jpg` (a leading slash would otherwise be signed and
+  yield `/_image//…` URLs that answer 403 behind nginx).
 - An unknown source name behaves like a missing file: the page renders without `height`/blur, the image URL returns 404.
 - A leading `@` in `src` is reserved. A directory of the default source whose name starts with `@` must be renamed or
   registered as a source of that name (`sources: { scope: '%kernel.project_dir%/data/@scope' }` keeps URLs and cache
@@ -217,7 +223,7 @@ id_sign_image:
 **Public (default):** Web server serves cached files via `try_files`. PHP only on first request per variant.
 
 ```nginx
-location /_image/ { try_files $uri @symfony; }
+location /_image/ { try_files $uri /index.php$is_args$args; }
 ```
 
 FrankenPHP: `php_server` serves existing files from the web root before handing a request to PHP (its built-in
@@ -237,8 +243,9 @@ variants also expire with `cache.ttl`.
 ## URL security
 
 Raster URLs are HMAC-signed. Tampered parameters → 403. The format is not signed, so the controller generates only the
-configured `formats` plus the source's fallback format; other extensions → 404. SVG URLs have no signature (no
-parameters to vary).
+configured `formats` plus the source's fallback format; other extensions → 404. The fallback follows the source
+extension: `jpg`/`jpeg` → `jpeg`, `png` → `png`, `webp` → `webp`, `avif` → `avif`, anything else (`gif`, `tiff`, `heic`,
+`bmp`, …) → `jpeg`. SVG URLs have no signature (no parameters to vary).
 
 URL format: `/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}`
 
@@ -268,13 +275,13 @@ The controller sends SVG as `image/svg+xml` with `Content-Security-Policy: sandb
 `X-Content-Type-Options: nosniff`, so controller mode is covered (X-Accel-Redirect drops them — add them in the internal
 location, README shows how). In public mode cache hits bypass PHP: add the same headers on the web server, matching
 case-insensitively (`logo.SVG` is served as SVG too). nginx — a regex `location` wins over the `/_image/` prefix one, so
-keep the `@symfony` fallback or uncached SVGs never reach PHP:
+keep the `/index.php` fallback or uncached SVGs never reach PHP:
 
 ```nginx
 location ~* ^/_image/.+\.svg$ {
     add_header Content-Security-Policy "sandbox" always;
     add_header X-Content-Type-Options "nosniff" always;
-    try_files $uri @symfony;
+    try_files $uri /index.php$is_args$args;
 }
 ```
 
@@ -320,7 +327,9 @@ For single URL generation in Twig (og tags, emails, JSON-LD):
 {{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright', autoDimensions=true, lossless=true) }}
 ```
 
-Parameters mirror component props + `format` (string, optional — if omitted, negotiated from the request Accept header;
+`src` and `width` are positional and required; the rest is optional and passed by name in any order (as in the examples)
+or positionally in the order `height, fit, quality, format, watermark, autoDimensions, lossless`. Parameters mirror
+component props + `format` (string, optional — if omitted, negotiated from the request Accept header;
 without a request `webp`, or the source's fallback format when `webp` is not configured). `format` must be one of the
 configured `formats` or the source's fallback format (`jpeg`/`png`), anything else throws `InvalidArgumentException` —
 the controller would answer 404 for it.
@@ -333,6 +342,10 @@ $url = $imageUrlGenerator->generateFromRequest($request, 'uploads/photo.jpg', 80
 // format: one of the configured formats or the source's fallback, anything else throws
 $url = $imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 'webp');
 ```
+
+Same rules as the component: `width` must be 1…`max_width`, `height` is used only together with `fit` (without `fit`
+the server resizes by `width` and keeps the aspect ratio), an unservable `format` throws. `scale-down` keeps the
+requested `width` here (the component replaces it with the source dimensions).
 
 ### Programmatic invalidation
 
@@ -354,7 +367,8 @@ See "Upgrading from v0.3.0 or earlier" in the bundle README. In short: a leading
 older versions are unused — the next `image:purge --force` removes them. The controller serves only the configured
 `formats` plus the source's fallback (other extensions 404); `image_url(format=…)` and `ImageUrlGenerator::generate()`
 throw for any other format and, without a request, fall back to the source format when `webp` is not configured. SVG
-responses from the controller carry `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`. Variants
-of sources with a Display P3 or
-Adobe RGB profile generated by older versions have washed-out colours (the profile was stripped without conversion);
-their URLs are unchanged, so purge those sources.
+responses from the controller carry `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`.
+`ImageUrlGenerator` follows the component's rules: a `height` without `fit` is dropped from the URL (a new cache
+variant; the old one was distorted) and a `width` above `max_width` throws. A leading slash in `src` is normalized
+away like `@default/`. Variants of sources with a Display P3 or Adobe RGB profile generated by older versions have
+washed-out colours (the profile was stripped without conversion); their URLs are unchanged, so purge those sources.

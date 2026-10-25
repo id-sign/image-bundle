@@ -18,7 +18,6 @@ class ImagickProcessor implements ImageProcessorInterface
         'avif' => 'AVIF',
         'webp' => 'WEBP',
         'jpeg' => 'JPEG',
-        'jpg' => 'JPEG',
         'png' => 'PNG',
     ];
 
