@@ -67,6 +67,7 @@ services:
     IdSign\ImageBundle\Service\ImageUrlGenerator:
         arguments:
             $routePrefix: '%id_sign_image.route_prefix%'
+            $maxWidth: '%id_sign_image.max_width%'
 
     IdSign\ImageBundle\Service\UrlSigner:
         arguments:

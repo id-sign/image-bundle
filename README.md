@@ -12,7 +12,9 @@ interfaces for custom image sources and cache storage. Ready for FrankenPHP work
 
 - PHP 8.2+
 - Symfony ^7.4 | ^8.0
-- ext-imagick
+- ext-imagick, with ImageMagick built with the `lcms` delegate (`convert -list configure | grep DELEGATES`) — it
+  performs the ICC colour conversion; without it profiled sources are logged and served unconverted, see
+  [Colour profiles and metadata](#colour-profiles-and-metadata)
 
 ## Installation
 
@@ -201,7 +203,9 @@ generated; a source tagged with one of the sRGB profile variants (camera and Pho
 2 ms and not converted. A profile that cannot be converted (truncated, or not matching the image) is logged as a
 warning and stripped without conversion. The sRGB target is the ICC's `sRGB2014.icc`, bundled in `resources/`; the
 bundle refuses to build the container when that file is missing. The conversion runs in LittleCMS through ImageMagick,
-on the profile embedded in the source file — keep `lcms2` as current as ImageMagick itself.
+on the profile embedded in the source file — keep `lcms2` as current as ImageMagick itself. An ImageMagick built
+without the `lcms` delegate cannot convert at all: every profiled source is then logged as a warning on cache miss and
+served with the profile stripped, i.e. with the washed-out colours of 0.3.
 
 Not handled, and taken as sRGB like browsers do: PNG files that declare their primaries only through `cHRM`/`gAMA`
 chunks, and AVIF/HEIC files whose colour space is given only by an `nclx` box without an ICC profile (`avifenc`,
@@ -223,11 +227,22 @@ Pixelmator, Affinity; iPhone HEIC embeds a profile and is converted).
 
 All other attributes (`alt`, `class`, `id`, `loading`, `data-*`, `aria-*`, etc.) are passed through to the `<img>` tag.
 
+Props are HTML attributes with the usual ux-twig-component rules: a plain `attr="…"` passes a string (`width="800"` is
+coerced to `int`), `:attr="…"` evaluates a Twig expression — needed for `false`, variables and anything that is not a
+literal string (`:width="image.width"`, `:watermark="false"`) — and a bare attribute means `true` (`blur`, `lossless`).
+The same props can be passed as a named map through the function syntax, handy in loops and macros where they come
+from variables:
+
+```twig
+{{ component('Image', { src: image.path, width: 800, fit: 'cover', alt: image.title, class: 'card__img' }) }}
+```
+
 ### `src`
 
 Path to the source image relative to the `default` source directory (`data/` unless configured). Prefix it with
 `@name/` to read from another configured source, e.g. `@reference/logo.png` — see [Image sources](#image-sources).
-`@default/photo.jpg` means the same as `photo.jpg`. The file must exist on the filesystem. For SVG files, no processing
+`@default/photo.jpg` means the same as `photo.jpg`, and so does `/photo.jpg` — a leading slash is dropped, so every
+spelling shares one URL and one cache directory. The file must exist on the filesystem. For SVG files, no processing
 is applied — the image is served directly.
 
 ### `width`
@@ -278,7 +293,8 @@ Pass `sizes` as any other attribute — it propagates to every `<source>` and `<
 The display height in pixels. When omitted and auto dimensions is enabled (globally via `auto_dimensions` config or
 per-component via `autoDimensions` prop), the height is automatically calculated from the source image's aspect ratio.
 When both `width` and `height` are provided with a `fit` mode, the server produces an image with exactly these
-dimensions.
+dimensions. Without `fit`, `height` is only the HTML attribute: the server resizes by `width` and keeps the source
+aspect ratio.
 
 ### `autoDimensions`
 
@@ -298,7 +314,8 @@ Controls how the image is resized when both `width` and `height` are specified:
 - **`scale-down`** — same as `contain`, but never upscales images smaller than the target. When the source is
   smaller, the rendered `width`/`height` attributes, `srcset` and URL reflect the actual source size.
 
-When omitted, the image is resized to the exact dimensions, which may distort the aspect ratio.
+When omitted, the server resizes by `width` only and keeps the source aspect ratio; `height` then only sets the HTML
+attribute (see [`height`](#height)).
 
 ### `blur`
 
@@ -373,11 +390,11 @@ default is `false`.
 Cached images are stored at a path matching the URL. The web server serves them directly via `try_files`, PHP is only
 called on the first request per variant.
 
-Nginx example:
+Nginx example (the fallback is the `/index.php` front controller of the standard Symfony vhost):
 
 ```nginx
 location /_image/ {
-    try_files $uri @symfony;
+    try_files $uri /index.php$is_args$args;
 }
 ```
 
@@ -538,8 +555,17 @@ path, so any modification of parameters (width, height, quality, etc.) results i
 prevents cache exhaustion attacks where an attacker generates arbitrary image variants.
 
 The output format is not part of the signature (one signature covers every `<source>` of a width), so the controller
-generates only the formats the application links to: the configured `formats` plus the source's fallback format
-(`jpeg`, `png`, `webp` or `avif`, see [Component attributes](#component-attributes)). Any other extension answers `404`.
+generates only the formats the application links to: the configured `formats` plus the source's fallback format. Any
+other extension answers `404`. The fallback format follows the source extension and is also the format of the `<img>`
+fallback of `<twig:Image>`:
+
+| Source extension                                  | Fallback format |
+|---------------------------------------------------|-----------------|
+| `jpg`, `jpeg`                                     | `jpeg`          |
+| `png`                                             | `png`           |
+| `webp`                                            | `webp`          |
+| `avif`                                            | `avif`          |
+| `gif`, `tiff`, `tif`, `heic`, `heif`, `bmp`, other | `jpeg`          |
 
 SVG URLs are **not** signed — SVG has no parameter variations, so HMAC would add no protection against cache
 exhaustion. See [Security model](#security-model) below for the implications.
@@ -615,20 +641,20 @@ Match the extension case-insensitively: the bundle serves `logo.SVG` as SVG too.
 
 ```nginx
 location /_image/ {
-    try_files $uri @symfony;
+    try_files $uri /index.php$is_args$args;
 }
 
 location ~* ^/_image/.+\.svg$ {
     add_header Content-Security-Policy "sandbox" always;
     add_header X-Content-Type-Options "nosniff" always;
-    try_files $uri @symfony;
+    try_files $uri /index.php$is_args$args;
 }
 ```
 
 A regex `location` takes precedence over the prefix one, so the SVG block needs its own `try_files` with the
-`@symfony` fallback — with `=404` an SVG that is not cached yet would never reach PHP and could never be cached. The
-`add_header` lines do not apply to the response from the named location; that one comes from the controller with its
-own headers.
+`/index.php` fallback of the standard Symfony vhost — with `=404` an SVG that is not cached yet would never reach PHP
+and could never be cached. The `add_header` lines do not apply to the fallback response; that one comes from the
+controller with its own headers.
 
 ### Apache
 
@@ -824,7 +850,11 @@ WebP, multi-page TIFF) is now processed from its first frame — it used to be t
 `max_source_pixels`. `image_url()` and `ImageUrlGenerator` return the passthrough URL for an `.svg` source instead of a
 signed raster URL. Responses carry an explicit `Content-Type` (previously guessed through `symfony/mime`, which the
 bundle never required), and SVG responses from the controller add `Content-Security-Policy: sandbox` and
-`X-Content-Type-Options: nosniff`. If a custom
+`X-Content-Type-Options: nosniff`. `ImageUrlGenerator::generate()` and `generateFromRequest()` now follow the
+component's rules: a `height` without `fit` is no longer part of the URL (such URLs used to resize to the exact box
+and distort the image — the new URL is a new cache variant), and a `width` above `max_width` or below 1 throws. A
+leading slash in `src` is dropped like `@default/`, so `/photo.jpg` and `photo.jpg` share one URL; a `src` with a
+leading slash used to produce `/_image//…` URLs that answer 403 behind nginx. If a custom
 `ImageSourceInterface` enforced per-image authorization in `exists()`, move it in front of the route — see
 [Security model](#security-model).
 
@@ -885,6 +915,12 @@ class ImageApiController
 }
 ```
 
+Both methods follow the rules of `<twig:Image>`: `width` must be between 1 and `max_width` (an
+`InvalidArgumentException` otherwise — the controller trusts the signature, so the cap sits where URLs are made),
+`height` is a processing dimension only together with `fit` (without `fit` the server resizes by `width` and keeps the
+aspect ratio), and a `format` the controller would not serve throws. Unlike the component, `scale-down` keeps the
+requested `width` instead of the source dimensions, so the URL can be a separate cache variant.
+
 ### Twig function `image_url()`
 
 For contexts where you need a single image URL instead of a full `<picture>` tag — og tags, emails, JSON-LD, etc.
@@ -908,11 +944,14 @@ rendered in a worker) the URL is `webp`, or the source's fallback format when `w
 {{ image_url('uploads/photo.jpg', 800, autoDimensions=true, format='webp') }}
 ```
 
+`src` and `width` are positional and required. Every other parameter is optional and passed by name in any order
+(Twig named arguments, matching the names in the table), or positionally in the table's order.
+
 | Parameter        | Type          | Required | Description                                                       |
 |------------------|---------------|----------|-------------------------------------------------------------------|
 | `src`            | string        | yes      | Source path, optionally `@source/`-prefixed                       |
 | `width`          | int           | yes      | Output width in pixels                                            |
-| `height`         | int           | no       | Output height (auto-calculated if `autoDimensions` enabled)       |
+| `height`         | int           | no       | Processing height, used only together with `fit` (auto-calculated if `autoDimensions` enabled) |
 | `fit`            | string        | no       | `cover`, `contain`, or `scale-down`                               |
 | `quality`        | int           | no       | Output quality 1-100 (default from config)                        |
 | `format`         | string        | no       | A configured format or the source's fallback (`jpeg`, `png`, …), else throws. Omitted: negotiated from the request, `webp` without one |

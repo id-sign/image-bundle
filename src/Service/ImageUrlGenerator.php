@@ -14,6 +14,7 @@ class ImageUrlGenerator
         private readonly CachePathResolver $cachePathResolver,
         private readonly FormatNegotiator $formatNegotiator,
         private readonly string $routePrefix,
+        private readonly int $maxWidth,
     ) {
     }
 
@@ -25,7 +26,12 @@ class ImageUrlGenerator
      * so it is refused here, where the mistake is visible. Without a format — nothing to negotiate from: console
      * command, e-mail rendered in a worker — the URL is webp when configured, else the source's fallback format.
      *
-     * @throws \InvalidArgumentException when $format is one the controller would not serve for this source
+     * The other rules are the component's: $width must be 1…max_width (the controller trusts the signature, so the
+     * cap has to sit where URLs are made), and $height is a processing dimension only together with $fit — without
+     * one the server resizes by width and keeps the aspect ratio, exactly like <twig:Image> and image_url().
+     *
+     * @throws \InvalidArgumentException when $width is not within 1…max_width, or $format is one the controller
+     *                                   would not serve for this source
      */
     public function generate(
         string $src,
@@ -39,6 +45,14 @@ class ImageUrlGenerator
     ): string {
         $src = SourcePath::normalize($src);
 
+        if ($width <= 0) {
+            throw new \InvalidArgumentException(\sprintf('ImageUrlGenerator requires width > 0 (got %d for src "%s").', $width, $src));
+        }
+
+        if ($width > $this->maxWidth) {
+            throw new \InvalidArgumentException(\sprintf('ImageUrlGenerator width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $width, $src, $this->maxWidth));
+        }
+
         // Like <twig:Image>: an SVG is served as-is, there is no variant to sign. A signed raster URL would make the
         // controller rasterize an untrusted SVG, and its variants directory would collide with the passthrough file.
         if (SourcePath::isSvg($src)) {
@@ -51,7 +65,11 @@ class ImageUrlGenerator
             throw new \InvalidArgumentException(\sprintf('Format "%s" is not generated for "%s": the controller serves only the configured "formats" and the source\'s fallback format ("%s"), any other extension answers 404.', $format, $src, FormatNegotiator::getFallbackFormat(pathinfo($src, \PATHINFO_EXTENSION))));
         }
 
-        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $height, $fit, $quality, $format, $watermark, $lossless));
+        // Height without fit is a layout hint in the component and image_url(); a signed "_800_600_none_" would make
+        // the processor resize to exactly that box and distort the image.
+        $processingHeight = null !== $fit ? $height : null;
+
+        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $processingHeight, $fit, $quality, $format, $watermark, $lossless));
     }
 
     /**

@@ -22,6 +22,12 @@ class SourcePathTest extends TestCase
         yield 'default without slash is unchanged' => ['@default', '@default'];
         yield 'default as a directory name deeper in the path is unchanged' => ['uploads/@default/photo.jpg', 'uploads/@default/photo.jpg'];
         yield 'prefix is case-sensitive' => ['@Default/photo.jpg', '@Default/photo.jpg'];
+        yield 'leading slash is stripped' => ['/uploads/photo.jpg', 'uploads/photo.jpg'];
+        yield 'repeated leading slashes are stripped' => ['//uploads/photo.jpg', 'uploads/photo.jpg'];
+        yield 'leading slash before the default prefix is stripped' => ['/@default/photo.jpg', 'photo.jpg'];
+        yield 'slash after the default prefix is stripped' => ['@default//photo.jpg', 'photo.jpg'];
+        yield 'leading slash before another prefix is stripped' => ['/@reference/photo.jpg', '@reference/photo.jpg'];
+        yield 'slash inside the path is unchanged' => ['uploads//photo.jpg', 'uploads//photo.jpg'];
     }
 
     #[DataProvider('provideNormalize')]
