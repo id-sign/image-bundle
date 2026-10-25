@@ -844,8 +844,10 @@ washed-out colours. The URLs are unchanged, so purge them:
 The controller generates only the configured `formats` plus the source's fallback format; a URL with another extension
 answers `404` (it used to produce the variant), and `.jpg` is no longer accepted as a variant extension (the bundle
 always generated `.jpeg`); `image_url(format=…)` and `ImageUrlGenerator::generate()` throw an
-`InvalidArgumentException` for a format the controller would not serve, and without a request they return the source's
-fallback format when `webp` is not configured (previously always `.webp`). A multi-frame source (GIF, APNG, animated
+`InvalidArgumentException` for a format the controller would not serve — the typical hit is an `og:image` requested as
+`jpeg` from a WebP or PNG source, switch it to `webp` (see [`image_url()`](#twig-function-image_url)) — and without a
+request they return the source's fallback format when `webp` is not configured (previously always `.webp`). A
+multi-frame source (GIF, APNG, animated
 WebP, multi-page TIFF) is now processed from its first frame — it used to be the last — and all frames count towards
 `max_source_pixels`. `image_url()` and `ImageUrlGenerator` return the passthrough URL for an `.svg` source instead of a
 signed raster URL. Responses carry an explicit `Content-Type` (previously guessed through `symfony/mime`, which the
@@ -937,12 +939,23 @@ rendered in a worker) the URL is `webp`, or the source's fallback format when `w
 {# Explicit format (best for og tags, emails — no content negotiation) #}
 {{ image_url('uploads/photo.jpg', 800, format='webp') }}
 
+{# og:image / twitter:image — WebP whatever the source format, see "Share images" below #}
+{{ image_url(article.image, 1200, 630, 'cover', format='webp') }}
+
 {# Full control #}
 {{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright') }}
 
 {# Auto-calculate height from aspect ratio #}
 {{ image_url('uploads/photo.jpg', 800, autoDimensions=true, format='webp') }}
 ```
+
+**Share images (`og:image`, `twitter:image`):** use `format='webp'`. As of late 2024 WebP previews render on every
+major platform — Facebook, X, LinkedIn, Slack, Discord, WhatsApp, iMessage, Threads, Bluesky, Mastodon, Pinterest —
+while AVIF is dropped by X, LinkedIn, Slack, Discord and iMessage. Do not reach for JPEG out of habit: the controller
+generates only the configured `formats` and the source's own format, so `format='jpeg'` throws for a WebP or PNG source
+(the gate that keeps one signed URL from producing a lossless PNG, see [URL security](#url-security)). If a platform
+you target really needs JPEG, add `jpeg` to `formats` — at the price of a third `<source>` in every `<picture>` — and
+check the result in the Facebook Sharing Debugger and the LinkedIn Post Inspector, which cache previews for days.
 
 `src` and `width` are positional and required. Every other parameter is optional and passed by name in any order
 (Twig named arguments, matching the names in the table), or positionally in the table's order.

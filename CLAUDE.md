@@ -472,7 +472,10 @@ component props.
 
 - Explicit `format` parameter → used as is when `FormatNegotiator::isOffered()` accepts it (a configured format or the
   source's fallback), otherwise `ImageUrlGenerator::generate()` throws `InvalidArgumentException` — the controller
-  would answer 404 for that URL, and a dead URL in an e-mail or a JSON response is found much later than an exception
+  would answer 404 for that URL, and a dead URL in an e-mail or a JSON response is found much later than an exception.
+  The typical hit is an og:image requested as `jpeg` from a WebP/PNG source; README and skill point to `webp` (rendered
+  by every major platform since late 2024, AVIF is not) instead of widening the gate — an `extra_formats` option was
+  considered for 0.4.0 and deferred until a real need (JPEG for e-mails) shows up
 - No format + active request → negotiate from `Accept` header (same as `ImageUrlGenerator::generateFromRequest()`)
 - No format + no request (e.g. CLI) → `webp` while it is configured, else the source's fallback format — both are
   always served; the literal `webp` of 0.3 answered 404 with `formats: ['avif']`

@@ -323,6 +323,9 @@ For single URL generation in Twig (og tags, emails, JSON-LD):
 {# Explicit format #}
 {{ image_url('uploads/photo.jpg', 800, format='webp') }}
 
+{# og:image / twitter:image — WebP whatever the source format #}
+{{ image_url(article.image, 1200, 630, 'cover', format='webp') }}
+
 {# All options #}
 {{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright', autoDimensions=true, lossless=true) }}
 ```
@@ -333,6 +336,11 @@ component props + `format` (string, optional — if omitted, negotiated from the
 without a request `webp`, or the source's fallback format when `webp` is not configured). `format` must be one of the
 configured `formats` or the source's fallback format (`jpeg`/`png`), anything else throws `InvalidArgumentException` —
 the controller would answer 404 for it.
+
+Share images (`og:image`, `twitter:image`): use `format='webp'` — as of late 2024 every major platform renders WebP
+previews (Facebook, X, LinkedIn, Slack, Discord, WhatsApp, iMessage, Threads, Bluesky); AVIF is dropped by X, LinkedIn,
+Slack, Discord and iMessage. `format='jpeg'` throws for a WebP or PNG source (the format gate); if a platform really
+needs JPEG, add `jpeg` to `formats` at the cost of a third `<source>` in every `<picture>`.
 
 ### Programmatic URL generation (PHP)
 
@@ -366,7 +374,8 @@ See "Upgrading from v0.3.0 or earlier" in the bundle README. In short: a leading
 (a one-off wave of new variants), oversized sources answer `413` instead of a server error, and `*.lock` files left by
 older versions are unused — the next `image:purge --force` removes them. The controller serves only the configured
 `formats` plus the source's fallback (other extensions 404); `image_url(format=…)` and `ImageUrlGenerator::generate()`
-throw for any other format and, without a request, fall back to the source format when `webp` is not configured. SVG
+throw for any other format (typical hit: an og:image as `jpeg` from a WebP/PNG source — use `webp`) and, without a
+request, fall back to the source format when `webp` is not configured. SVG
 responses from the controller carry `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`.
 `ImageUrlGenerator` follows the component's rules: a `height` without `fit` is dropped from the URL (a new cache
 variant; the old one was distorted) and a `width` above `max_width` throws. A leading slash in `src` is normalized
