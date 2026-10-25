@@ -354,6 +354,23 @@ class ImageControllerTest extends TestCase
         self::assertSame(200, $response->getStatusCode());
     }
 
+    /**
+     * An SVG can carry <script>; loaded as a document from the application's origin it would run there. The controller
+     * covers controller mode and the first (uncached) response in public mode — cache hits there never reach PHP.
+     */
+    public function testSvgResponseCarriesSandboxAndNosniffHeaders(): void
+    {
+        $request = Request::create('/_image/logo.svg');
+
+        foreach ([($this->controller)($request, 'logo.svg'), ($this->controller)($request, 'logo.svg')] as $response) {
+            self::assertSame('sandbox', $response->headers->get('Content-Security-Policy'));
+            self::assertSame('nosniff', $response->headers->get('X-Content-Type-Options'));
+        }
+
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+        self::assertFalse(($this->controller)(Request::create('/_image/'.$path), $path)->headers->has('Content-Security-Policy'));
+    }
+
     public function testSvgMissingSourceReturns404(): void
     {
         $path = 'nonexistent.svg';

@@ -86,6 +86,38 @@ class ImageUrlGeneratorTest extends TestCase
      * Like <twig:Image>: no variant, no signature — a signed raster URL would make the controller rasterize an
      * untrusted SVG (and collide with the passthrough cache file).
      */
+    /**
+     * The signature does not cover the format, so the controller answers 404 for anything but the configured formats
+     * and the source's fallback. An exception at render time beats a dead URL discovered in a sent e-mail.
+     */
+    public function testFormatTheControllerWouldNotServeIsRefused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('Format "png" is not generated for "uploads/photo.jpg"');
+
+        $this->generator->generate('uploads/photo.jpg', 800, null, null, 80, 'png');
+    }
+
+    public function testTheFallbackFormatOfTheSourceIsAlwaysOffered(): void
+    {
+        self::assertStringEndsWith('.jpeg', $this->generator->generate('uploads/photo.jpg', 800, null, null, 80, 'jpeg'));
+        self::assertStringEndsWith('.png', $this->generator->generate('icons/logo.png', 800, null, null, 80, 'png'));
+    }
+
+    public function testWithoutFormatWebpIsUsedWhileItIsConfigured(): void
+    {
+        self::assertStringEndsWith('.webp', $this->generator->generate('uploads/photo.jpg', 800));
+    }
+
+    public function testWithoutFormatAndWithoutWebpConfiguredTheSourceFallbackIsUsed(): void
+    {
+        // A literal 'webp' default would produce URLs the controller answers with 404.
+        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image');
+
+        self::assertStringEndsWith('.jpeg', $generator->generate('uploads/photo.jpg', 800));
+        self::assertStringEndsWith('.png', $generator->generate('icons/logo.png', 800));
+    }
+
     public function testSvgSourceYieldsThePassthroughUrl(): void
     {
         self::assertSame('/_image/icons/logo.svg', $this->generator->generate('icons/logo.svg', 800, 600, 'cover', 80, 'avif'));

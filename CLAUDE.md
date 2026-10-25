@@ -13,7 +13,7 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 ## Requirements
 
 - PHP 8.2+
-- Symfony 7.4+ | 8.0+
+- Symfony ^7.4 | ^8.0
 - ext-imagick
 - `symfony/ux-twig-component` (bundle dependency)
 - `symfony/yaml` (the DI extension loads `services.yaml`)
@@ -31,7 +31,7 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 
 ```
 src/
-├── ImageBundle.php
+├── IdSignImageBundle.php
 ├── DependencyInjection/
 │   ├── IdSignImageExtension.php
 │   └── Configuration.php
@@ -44,9 +44,12 @@ src/
 │   ├── ColorProfile.php
 │   ├── ExifInteroperability.php
 │   ├── FormatNegotiator.php
+│   ├── ImageUrlGenerator.php
 │   ├── SrcsetGenerator.php
 │   ├── BlurPlaceholderGenerator.php
 │   ├── ImageMetadataReader.php
+│   ├── SourceSizeValidator.php
+│   ├── SourceTooLargeException.php
 │   ├── UrlSigner.php
 │   ├── WatermarkOptions.php
 │   └── WatermarkRegistry.php
@@ -202,7 +205,8 @@ configured file permissions (needed because `tempnam()` creates files with `0600
 - **`public` (default):** Cache path matches URL path. Web server serves files directly via `try_files`. PHP only called
   on first request per variant. TTL config has no effect.
 - **`controller`:** Every request goes through PHP. Enables TTL-based invalidation — `has()` checks `filemtime()`
-  against configured TTL. Use for access-controlled images.
+  against configured TTL. Use for access-controlled images — with `cache.path` outside the document root: under
+  `public/` the web server's `try_files` serves a cached variant without PHP and the firewall never runs.
 
 In both modes a cached variant is served without consulting the source: `try_files` cannot, and the controller checks
 the cache before `ImageSourceInterface::exists()`, so a warm hit costs no source I/O (one `stat()` locally, a
@@ -444,7 +448,8 @@ Used for API responses, emails, or any context outside Twig templates. Unlike `<
 does not replace a `scale-down` width/height with the source dimensions, so its URL can be a separate cache variant.
 For an `.svg` source (`SourcePath::isSvg()`, the one rule shared with the component, `image_url()` and the controller)
 it returns the passthrough URL — a signed raster URL would make the controller rasterize an untrusted SVG and its
-variants directory would collide with the passthrough cache file.
+variants directory would collide with the passthrough cache file. `generate()` refuses a `$format` the controller would
+not serve and, when `$format` is `null`, picks one it does — see Format resolution under `image_url()`.
 
 ### Twig function `image_url()`
 
@@ -457,9 +462,12 @@ component props.
 
 **Format resolution:**
 
-- Explicit `format` parameter → use that format directly
+- Explicit `format` parameter → used as is when `FormatNegotiator::isOffered()` accepts it (a configured format or the
+  source's fallback), otherwise `ImageUrlGenerator::generate()` throws `InvalidArgumentException` — the controller
+  would answer 404 for that URL, and a dead URL in an e-mail or a JSON response is found much later than an exception
 - No format + active request → negotiate from `Accept` header (same as `ImageUrlGenerator::generateFromRequest()`)
-- No format + no request (e.g. CLI) → fallback to `webp`
+- No format + no request (e.g. CLI) → `webp` while it is configured, else the source's fallback format — both are
+  always served; the literal `webp` of 0.3 answered 404 with `formats: ['avif']`
 
 **Watermark/quality/autoDimensions resolution** follows the same logic as `ImageComponent` — global defaults from
 config, overridable per call.
@@ -481,10 +489,15 @@ the largest entry. Default `sizes` attribute: `100vw`.
 1. `CacheStorageInterface::has()` — cache check → hit is served without touching the source
 2. Cache miss: `ImageSourceInterface::exists()` — source check → 404 if missing
 3. `SourceSizeValidator::assertFits()` (`max_source_bytes`) → 413; copy source to temp file → `writeLocked()` to cache
-4. `BinaryFileResponse` with `Content-Type: image/svg+xml` and immutable cache headers
+4. `BinaryFileResponse` with `Content-Type: image/svg+xml`, `Content-Security-Policy: sandbox`,
+   `X-Content-Type-Options: nosniff` and immutable cache headers
 
-No HMAC, no Imagick processing. Security headers for SVG (`nosniff`, CSP `sandbox`) are the web server's job in both
-modes; the controller sets the type explicitly so nothing is sniffed from the content.
+No HMAC, no Imagick processing. The two security headers cost nothing and cover controller mode and the first (uncached)
+response in public mode; public-mode cache hits never reach PHP, so the web server adds the same headers there (README
+"Webserver hardening for SVG" — the nginx SVG `location` must keep the `@symfony` fallback, a regex location wins over
+the prefix one and `=404` would keep uncached SVGs from ever reaching PHP), and nginx's X-Accel-Redirect keeps only
+`Content-Type`/`Cache-Control`-class headers, so the internal location adds them too. The type is set explicitly so
+nothing is sniffed from the content.
 
 **Raster flow:**
 
@@ -546,14 +559,14 @@ the sole author.
   `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
   `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
-  `ImageUrlExtension`, `ImagickProcessor`
+  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, SVG passthrough), `ImagickProcessor`
   (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width),
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
   `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), source above `max_source_pixels`/`max_source_bytes` (413, nothing cached), cached variant of a deleted source
   still served (cache before source, raster and SVG), avif/webp format
-  generation, watermark processing, SVG passthrough, named sources (`@reference/` cache
+  generation, watermark processing, SVG passthrough (+ `sandbox`/`nosniff` headers), named sources (`@reference/` cache
   directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity

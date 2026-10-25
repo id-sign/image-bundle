@@ -224,7 +224,9 @@ FrankenPHP: `php_server` serves existing files from the web root before handing 
 `try_files {path} {path}/index.php index.php`), and `@` in the URL (`%40`) works, so nothing has to be configured.
 Caddy with PHP-FPM: `handle /_image/* { try_files {path}; php_fastcgi … }`.
 
-**Controller:** Every request through PHP. Enables TTL-based invalidation and access control. Works with
+**Controller:** Every request through PHP. Enables TTL-based invalidation and access control — with `cache.path` outside
+the document root (`%kernel.project_dir%/var/image-cache`): under `public/` the web server's `try_files` serves cached
+variants without PHP and the firewall never sees them. Works with
 `X-Accel-Redirect`/`X-Sendfile` out of the box: set `framework.trust_x_sendfile_type_header` and the web server mapping
 (README has nginx, FrankenPHP and Apache configs) — PHP then sends only headers and the web server streams the file.
 
@@ -244,8 +246,9 @@ URL format: `/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile
 
 Every configured source directory (`sources`, default `%kernel.project_dir%/data`) is treated as **publicly
 accessible**. Any file under any of them is readable by anyone who knows (or guesses) the path — adding a directory to
-`sources` publishes it. For access control, use `serve_mode: controller` + Symfony firewall in front of the bundle
-route; `try_files` in public mode bypasses Symfony security.
+`sources` publishes it. For access control, use `serve_mode: controller` with `cache.path` outside the document root +
+Symfony firewall in front of the bundle route; `try_files` bypasses Symfony security in public mode, and in controller
+mode whenever the cache sits under `public/`.
 
 Path segments `..`, `.`, empty and any containing `\` are rejected; symlinks inside the source tree ARE followed
 (admin's decision). Audit `find data/ -type l` if you don't want that. Per-image authorization belongs in front of the
@@ -261,15 +264,17 @@ photography. Still configure ImageMagick's `policy.xml` — the bundle is not a 
 
 ### SVG XSS
 
-The bundle sends SVG as `image/svg+xml` and adds no security headers; add them on the web server in both serve modes
-(public: PHP is not involved; controller: the web server still sees the URL). Match case-insensitively (`logo.SVG` is
-served as SVG too). nginx:
+The controller sends SVG as `image/svg+xml` with `Content-Security-Policy: sandbox` and
+`X-Content-Type-Options: nosniff`, so controller mode is covered (X-Accel-Redirect drops them — add them in the internal
+location, README shows how). In public mode cache hits bypass PHP: add the same headers on the web server, matching
+case-insensitively (`logo.SVG` is served as SVG too). nginx — a regex `location` wins over the `/_image/` prefix one, so
+keep the `@symfony` fallback or uncached SVGs never reach PHP:
 
 ```nginx
 location ~* ^/_image/.+\.svg$ {
     add_header Content-Security-Policy "sandbox" always;
     add_header X-Content-Type-Options "nosniff" always;
-    try_files $uri =404;
+    try_files $uri @symfony;
 }
 ```
 
@@ -315,13 +320,17 @@ For single URL generation in Twig (og tags, emails, JSON-LD):
 {{ image_url('uploads/photo.jpg', 800, height=600, fit='cover', quality=90, format='avif', watermark='copyright', autoDimensions=true, lossless=true) }}
 ```
 
-Parameters mirror component props + `format` (string, optional — if omitted, negotiated from request Accept header).
+Parameters mirror component props + `format` (string, optional — if omitted, negotiated from the request Accept header;
+without a request `webp`, or the source's fallback format when `webp` is not configured). `format` must be one of the
+configured `formats` or the source's fallback format (`jpeg`/`png`), anything else throws `InvalidArgumentException` —
+the controller would answer 404 for it.
 
 ### Programmatic URL generation (PHP)
 
 ```php
 // Inject ImageUrlGenerator, then:
 $url = $imageUrlGenerator->generateFromRequest($request, 'uploads/photo.jpg', 800, 600, 'cover');
+// format: one of the configured formats or the source's fallback, anything else throws
 $url = $imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 'webp');
 ```
 
@@ -342,6 +351,10 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 See "Upgrading from v0.3.0 or earlier" in the bundle README. In short: a leading `@` in `src` now selects a named source
 (rename a `data/@dir` directory or register it as a source of that name), default `device_sizes` gained `320` and `480`
 (a one-off wave of new variants), oversized sources answer `413` instead of a server error, and `*.lock` files left by
-older versions are unused — the next `image:purge --force` removes them. Variants of sources with a Display P3 or
+older versions are unused — the next `image:purge --force` removes them. The controller serves only the configured
+`formats` plus the source's fallback (other extensions 404); `image_url(format=…)` and `ImageUrlGenerator::generate()`
+throw for any other format and, without a request, fall back to the source format when `webp` is not configured. SVG
+responses from the controller carry `Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`. Variants
+of sources with a Display P3 or
 Adobe RGB profile generated by older versions have washed-out colours (the profile was stripped without conversion);
 their URLs are unchanged, so purge those sources.

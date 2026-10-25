@@ -81,16 +81,16 @@ class ImageUrlExtension extends AbstractExtension
 
         $processingHeight = null !== $fit ? $resolvedHeight : null;
 
-        if (null !== $format) {
-            return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, $format, $resolvedWatermark, $resolvedLossless);
+        if (null === $format) {
+            $request = $this->requestStack->getCurrentRequest();
+
+            if (null !== $request) {
+                return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $resolvedQuality, $resolvedWatermark, $resolvedLossless);
+            }
         }
 
-        $request = $this->requestStack->getCurrentRequest();
-
-        if (null !== $request) {
-            return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $resolvedQuality, $resolvedWatermark, $resolvedLossless);
-        }
-
-        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, 'webp', $resolvedWatermark, $resolvedLossless);
+        // Explicit format (validated by the generator), or no request to negotiate from — the generator then picks
+        // a format the controller serves.
+        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, $format, $resolvedWatermark, $resolvedLossless);
     }
 }
