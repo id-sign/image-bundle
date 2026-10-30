@@ -658,6 +658,11 @@ three places that must stay in sync: `README.md` (full reference), this file (de
 `.claude/skills/image-bundle/SKILL.md`, a Claude Code skill shipped with the bundle for applications that use it (a condensed
 README: component, config, sources, serve modes, security, purge). Update the skill together with the README.
 
+What an application has to do when it upgrades — breaking changes, config that now fails the build, cache entries to
+purge — goes into `UPGRADE.md`, one `## From vX.Y.Z or earlier` section per release, newest first, grouped by topic
+(security, configuration, routing, templates/API, cache, PHP API). README only links to it; the skill keeps a short
+summary per release that points to the matching section.
+
 ## Code quality
 
 **IMPORTANT:** Before every commit, all three checks must pass — PHP CS Fixer, PHPStan, and PHPUnit. These are enforced
