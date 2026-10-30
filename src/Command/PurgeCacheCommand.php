@@ -49,6 +49,15 @@ class PurgeCacheCommand extends Command
         $accessedBefore = $input->getOption('accessed-before');
         $dryRun = !((bool) $input->getOption('force'));
 
+        // (int) "thirty" is 0: a typo would have purged every file older than now — the whole cache.
+        foreach (['modified-before' => $modifiedBefore, 'accessed-before' => $accessedBefore] as $option => $days) {
+            if (null !== $days && !ctype_digit($days)) {
+                $io->error(\sprintf('--%s takes a number of days, got "%s".', $option, $days));
+
+                return Command::INVALID;
+            }
+        }
+
         if (!is_dir($this->cacheDirectory)) {
             $io->success('Cache directory does not exist. Nothing to purge.');
 
@@ -96,6 +105,8 @@ class PurgeCacheCommand extends Command
         $atimeThreshold = null !== $accessedBefore ? $now - ((int) $accessedBefore * 86400) : null;
 
         $count = 0;
+        /** @var array<string, true> $emptied directories a file was deleted from */
+        $emptied = [];
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($this->cacheDirectory, \FilesystemIterator::SKIP_DOTS),
         );
@@ -118,10 +129,20 @@ class PurgeCacheCommand extends Command
 
             if ($dryRun) {
                 $io->writeln($path);
-            } else {
-                unlink($path);
+            } elseif (@unlink($path)) {
+                $emptied[$file->getPath()] = true;
             }
             ++$count;
+        }
+
+        // A variants directory whose last file went is removed, and its parents up to the cache directory as they
+        // empty. rmdir() fails on anything that still holds a file; a request that waited for the lock of a removed
+        // directory creates it again (LocalFilesystemCacheStorage::writeLocked()).
+        $root = rtrim($this->cacheDirectory, '/');
+        foreach (array_keys($emptied) as $dir) {
+            while (str_starts_with($dir, $root.'/') && @rmdir($dir)) {
+                $dir = \dirname($dir);
+            }
         }
 
         $action = $dryRun ? 'Would delete' : 'Deleted';

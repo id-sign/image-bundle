@@ -196,7 +196,13 @@ cached as a single file at `{src}` (no variants directory), so `deleteBySource('
 directly. The deletion is recursive, so a directory prefix works too: `deleteBySource('uploads/2024')` or
 `deleteBySource('@reference')` removes every variants directory below it — that is what `image:purge @reference --force`
 relies on. `rmdir()` failures are ignored on purpose: a directory that a concurrent request refilled with a fresh
-variant after its old files were unlinked must stay. `image:purge <src>` validates `src` through
+variant after its old files were unlinked must stay. Purge and a running encode share the directory lock of
+`writeLocked()`: `deleteTree()` takes each directory's lock non-blocking and skips a directory a request is writing
+into, with everything in it (deleting its staging file or the directory under the encoder answered 500; the next purge
+takes it), and `lockDirectory()` checks after `flock()` that the locked inode is still the directory's — a request that
+waited while a purge removed the directory creates it again and locks the new one. The age purge
+(`--modified-before`/`--accessed-before`, which take whole days only — `(int) "thirty"` was 0 and purged everything)
+removes the directories it emptied, up to the cache root. `image:purge <src>` validates `src` through
 `CacheStorageInterface::getAbsolutePath()` before counting or deleting, so the dry run reports exactly what `--force`
 deletes and never walks outside the cache directory (`..`, `.` or an empty path — e.g. `@default/` normalized — exit
 with an error).
@@ -684,7 +690,9 @@ the sole author.
   `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, a container
   compiled with an `%env()%` value per option, tagged
   registration, compiled-container wiring — needs `symfony/yaml`, cache directory holding a source refused),
-  `PurgeCacheCommand`, `LocalFilesystemCacheStorage`,
+  `PurgeCacheCommand` (non-numeric days refused, age purge removes emptied directories), `LocalFilesystemCacheStorage`
+  (purge skips a directory a request holds the lock of; a write survives its directory being purged while it waited
+  for the lock — `pcntl_fork`, skipped without pcntl),
   `SrcsetGenerator`,
   `ImageComponent` (per-format quality, map prop),
   `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality

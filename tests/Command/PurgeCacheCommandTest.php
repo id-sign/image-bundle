@@ -114,6 +114,44 @@ class PurgeCacheCommandTest extends TestCase
         self::assertFileExists($this->cacheDir.'/@reference/logo.png/meta.json');
     }
 
+    /**
+     * @return iterable<string, array{array<string, string>}>
+     */
+    public static function invalidDays(): iterable
+    {
+        yield 'word' => [['--modified-before' => 'thirty']];
+        yield 'negative' => [['--accessed-before' => '-5']];
+        yield 'fraction' => [['--modified-before' => '1.5']];
+    }
+
+    /**
+     * (int) "thirty" is 0: every file older than now, i.e. the whole cache, would have gone.
+     *
+     * @param array<string, string> $options
+     */
+    #[DataProvider('invalidDays')]
+    public function testNonNumericDaysAreRejectedBeforeDeleting(array $options): void
+    {
+        $exitCode = $this->tester->execute($options + ['--force' => true]);
+
+        self::assertSame(Command::INVALID, $exitCode);
+        self::assertStringContainsString('takes a number of days', $this->tester->getDisplay());
+        self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
+    }
+
+    public function testPurgeByAgeRemovesTheDirectoriesItEmptied(): void
+    {
+        $old = time() - 10 * 86400;
+        foreach (['aa00bb11cc22dd33_64_auto_none_80.webp', 'meta.json'] as $name) {
+            touch($this->cacheDir.'/uploads/photo.jpg/'.$name, $old);
+        }
+
+        $this->tester->execute(['--modified-before' => '5', '--force' => true]);
+
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/uploads', 'photo.jpg/ and then uploads/ were emptied');
+        self::assertDirectoryExists($this->cacheDir.'/@reference/logo.png', 'its files are newer');
+    }
+
     public function testDryRunCountsNormalizedSource(): void
     {
         $this->tester->execute(['src' => '@default/uploads/photo.jpg']);
