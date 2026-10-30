@@ -101,9 +101,9 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     }
 
     /**
-     * Creates $dir and takes its lock. A purge removes a directory only while it holds that lock (see deleteTree()),
-     * so a request that waited for it may hold a lock on a directory that no longer exists — writing there would
-     * fail with a 500. The lock then has to be taken again on the directory that exists now.
+     * Creates $dir and takes its lock. A purge may remove the directory while the request waits for the lock or right
+     * before it opens it — writing there would fail with a 500. The lock is then taken again on the directory that
+     * exists now (the open handle pins the old inode, so a recreated directory never matches it).
      *
      * @return resource|null the held lock, or null where directories cannot be locked
      */
@@ -116,6 +116,14 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             $handle = @fopen($dir, 'r');
 
             if (false === $handle) {
+                // A purge removed the directory between ensureDir() and fopen(): create it again. Where directories
+                // cannot be opened at all (Windows) it exists, and the write goes unlocked.
+                clearstatcache(true, $dir);
+
+                if (!is_dir($dir)) {
+                    continue;
+                }
+
                 return null;
             }
 
@@ -223,7 +231,10 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
 
         // A variants directory, or a directory prefix such as "uploads" or "@reference" — the whole
         // subtree goes, including the variants directories of every source image below it.
-        return $this->deleteTree($path, true);
+        $count = $this->deleteContents($path);
+        @rmdir($path);
+
+        return $count;
     }
 
     public function purgeAll(): int
@@ -232,57 +243,36 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             return 0;
         }
 
-        return $this->deleteTree($this->cacheDirectory, false);
+        return $this->deleteContents($this->cacheDirectory);
     }
 
     /**
-     * Deletes everything below $dir — and $dir itself when $includingDir — and returns the number of files removed.
+     * Deletes everything below $dir (not $dir itself) and returns the number of files removed.
      *
-     * A directory a request is writing into holds the writeLocked() lock: it is skipped with everything in it, the
-     * next purge takes it. Deleting the staging file or the directory under a running encode made that request
-     * answer 500. rmdir() failures are ignored on purpose: a request may have written a fresh variant meanwhile.
+     * No locks: a request encoding into a directory at that very moment can lose its staging file or directory and
+     * fail once — the next request generates the variant again. A purge that skipped locked directories lost
+     * invalidations (deleteBySource() during an encode deleted nothing) and deleted nothing at all on NFS, where
+     * flock() on a directory always fails. rmdir() failures are deliberately ignored: a concurrent request may have
+     * written a fresh variant into a directory after its old files were unlinked, and that directory must stay.
      */
-    private function deleteTree(string $dir, bool $includingDir): int
+    private function deleteContents(string $dir): int
     {
-        $lock = @fopen($dir, 'r');
+        $count = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST,
+        );
 
-        if (false !== $lock && !flock($lock, \LOCK_EX | \LOCK_NB)) {
-            fclose($lock);
-
-            return 0;
-        }
-
-        try {
-            $count = 0;
-
-            foreach (scandir($dir) ?: [] as $name) {
-                if ('.' === $name || '..' === $name) {
-                    continue;
-                }
-
-                $path = $dir.'/'.$name;
-
-                if (is_link($path) && is_dir($path)) {
-                    continue;
-                }
-
-                if (is_dir($path)) {
-                    $count += $this->deleteTree($path, true);
-                } elseif (@unlink($path)) {
-                    ++$count;
-                }
-            }
-
-            if ($includingDir) {
-                @rmdir($dir);
-            }
-
-            return $count;
-        } finally {
-            if (false !== $lock) {
-                flock($lock, \LOCK_UN);
-                fclose($lock);
+        /** @var \SplFileInfo $file */
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                unlink($file->getPathname());
+                ++$count;
+            } elseif ($file->isDir()) {
+                @rmdir($file->getPathname());
             }
         }
+
+        return $count;
     }
 }
