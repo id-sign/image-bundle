@@ -26,6 +26,8 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 - `phpunit/phpunit`
 - `symfony/property-access` (the component test writes props the way ux-twig-component does — `quality="90"` must
   coerce into `int|array|null`)
+- `symfony/framework-bundle` (`ImageRouteTest` reads `config/routes.yaml` through its router, which resolves the
+  `%id_sign_image.route_prefix%` in the route path)
 
 ## Architecture
 
@@ -164,6 +166,12 @@ URLs are path-based (not query string) so they work with web server `try_files`:
 ```
 /_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}
 ```
+
+`/_image` is the default `route_prefix`. `config/routes.yaml` takes the route path from it
+(`'%id_sign_image.route_prefix%/{path}'`, resolved by FrameworkBundle's router — `ImageRouteTest` loads it that way),
+and the default `cache.path` is `%kernel.project_dir%/public` + `route_prefix`, so URL, route and public-mode cache
+path cannot drift apart. Up to 0.4 the route path was a literal `/_image/{path}` and the README told users to import
+it with `prefix: /media/images`, which gave `/media/images/_image/{path}` against URLs `/media/images/…`: 404.
 
 Example: `/_image/uploads/photo.jpg/a1b2c3d4e5f6g7h8_800_600_cover_80.avif`
 With watermark: `/_image/uploads/photo.jpg/b2c3d4e5f6g7h8a1_800_600_cover_80_wm-copyright.avif`
@@ -644,6 +652,8 @@ the sole author.
   still served (cache before source, raster and SVG), avif/webp format
   generation, watermark processing, SVG passthrough (+ `sandbox`/`nosniff` headers), named sources (`@reference/` cache
   directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400)
+- Route test: `ImageRouteTest` — `config/routes.yaml` through FrameworkBundle's router, the route path follows
+  `route_prefix` and matches the URLs `CachePathResolver` generates (default and nested prefix, encoded src)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
   entropy survives resize so quality has a large, encoder-version-independent effect; used by quality-sensitivity
   tests), `tests/Fixtures/rotated.jpg` (stored 40x30 with EXIF Orientation=6, displayed 30x40),
@@ -670,7 +680,7 @@ id_sign_image:
     formats: [ 'avif', 'webp' ]       # FormatNegotiator::OUTPUT_FORMATS, each once; a later file replaces the list
     cache:
         ttl: 2592000                    # 30 days (controller mode only), ≥ 0; 0 = re-encode every request
-        path: '%kernel.project_dir%/public/_image'
+        path: ~                         # default: %kernel.project_dir%/public + route_prefix
     blur:
         enabled: false
         size: 10                        # ≥ 1
@@ -691,7 +701,7 @@ id_sign_image:
     file_permissions: 0660              # null = use umask default
     directory_permissions: 0770
     serve_mode: 'public'                # 'public' or 'controller'
-    route_prefix: '/_image'             # leading "/", no trailing "/"
+    route_prefix: '/_image'             # leading "/", no trailing "/"; route path and default cache.path follow it
 ```
 
 Custom source implementations are services tagged `id_sign_image.source` with a `name` attribute; a custom default
