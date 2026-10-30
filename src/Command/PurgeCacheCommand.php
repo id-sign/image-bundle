@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Command;
 
+use IdSign\ImageBundle\Cache\CacheFiles;
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -102,11 +103,13 @@ class PurgeCacheCommand extends Command
 
         /** @var \SplFileInfo $file */
         foreach ($iterator as $file) {
-            if (!$file->isFile()) {
+            $path = $file->getPathname();
+
+            // Only what the bundle wrote — the cache directory may be shared (see CacheFiles). Markers go with
+            // their SVG copy.
+            if (!$file->isFile() || !CacheFiles::isOwned($path) || CacheFiles::isSvgMarker($path)) {
                 continue;
             }
-
-            $path = $file->getPathname();
 
             if (null !== $mtimeThreshold && filemtime($path) >= $mtimeThreshold) {
                 continue;
@@ -120,6 +123,10 @@ class PurgeCacheCommand extends Command
                 $io->writeln($path);
             } else {
                 unlink($path);
+
+                if (str_ends_with(strtolower($path), '.svg')) {
+                    @unlink(CacheFiles::svgMarker($path));
+                }
             }
             ++$count;
         }
@@ -145,8 +152,12 @@ class PurgeCacheCommand extends Command
 
     private function countSourceFiles(string $path): int
     {
-        // Mirrors CacheStorageInterface::deleteBySource(): a single SVG file, or a whole subtree.
-        return is_file($path) ? 1 : $this->countFilesRecursive($path);
+        // Mirrors CacheStorageInterface::deleteBySource(): a single SVG copy, or the bundle's files in a subtree.
+        if (is_file($path)) {
+            return CacheFiles::isOwned($path) ? 1 : 0;
+        }
+
+        return $this->countFilesRecursive($path);
     }
 
     private function countFilesRecursive(string $dir): int
@@ -162,7 +173,7 @@ class PurgeCacheCommand extends Command
 
         /** @var \SplFileInfo $file */
         foreach ($iterator as $file) {
-            if ($file->isFile()) {
+            if ($file->isFile() && CacheFiles::isOwned($file->getPathname()) && !CacheFiles::isSvgMarker($file->getPathname())) {
                 ++$count;
             }
         }

@@ -46,14 +46,15 @@ interface CacheStorageInterface
     public function delete(string $cachePath): void;
 
     /**
-     * Delete all cached variants for a specific source image.
+     * Delete all cached variants for a specific source image (or below a directory prefix). Only files the bundle
+     * wrote are removed: the cache directory may be shared with the application's own files.
      *
      * @return int Number of deleted files
      */
     public function deleteBySource(string $src): int;
 
     /**
-     * Delete all cached files.
+     * Delete all files the bundle wrote to the cache; other files in the cache directory stay.
      *
      * @return int Number of deleted files
      */

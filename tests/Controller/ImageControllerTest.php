@@ -354,6 +354,16 @@ class ImageControllerTest extends TestCase
         self::assertFileExists($this->cacheDir.'/'.$path);
     }
 
+    public function testSvgCopyIsMarkedSoThatPurgeRecognisesIt(): void
+    {
+        // A copy has the name of any static SVG; without the marker image:purge leaves it alone.
+        self::assertSame(200, ($this->controller)(Request::create('/_image/logo.svg'), 'logo.svg')->getStatusCode());
+
+        self::assertFileExists($this->cacheDir.'/.logo.svg.id-sign-image');
+        self::assertSame(1, (new LocalFilesystemCacheStorage($this->cacheDir, 3600, null, 0o770))->deleteBySource('logo.svg'));
+        self::assertFileDoesNotExist($this->cacheDir.'/logo.svg');
+    }
+
     public function testSvgCacheHitServesExistingFile(): void
     {
         $path = 'logo.svg';
