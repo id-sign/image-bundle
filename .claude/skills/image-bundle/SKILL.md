@@ -330,8 +330,9 @@ php bin/console image:purge --modified-before=30 --force       # older than 30 d
 php bin/console image:purge --accessed-before=14 --force       # not accessed in 14 days
 ```
 
-Purge and `deleteBySource()` delete only files the bundle wrote (variants, `meta.json`, `blur.txt`, SVG copies marked
-by a hidden `.{name}.id-sign-image` file); anything else in the cache directory stays.
+Purge and `deleteBySource()` delete only files the bundle wrote (variants, `meta.json`/`blur.txt` recognised by
+content, SVG copies marked by a hidden `.{name}.id-sign-image` file) and only directories they emptied; anything else
+in the cache directory stays. The cache directory must not also be a source directory (every image would answer 500).
 
 ### Twig function `image_url()`
 
@@ -391,21 +392,23 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 ## Upgrading from v0.4.0 or earlier
 
-See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a `fit` other than `cover`/`contain`/
-`scale-down` throws (it used to render URLs answering 400); a signed URL with a leading zero in a number
-(`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400; `ImageUrlGenerator` without
-`quality` now uses the configured quality of the format instead of a hard-coded `80` (URLs change only when
-`default_quality` is not 80 or `format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the
-generator — throws, and `formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints
-≥ 1 once each, with a later config file replacing either list instead of appending to it. Values that used to break at
-runtime fail the build: unknown `default_watermark`, watermark names outside `[A-Za-z0-9_-]`, relative watermark paths,
-watermark `size` outside 1-100, negative `margin`, `blur.size` outside 1-64, negative `cache.ttl`, relative or empty
-`cache.path`, permission modes without owner rw/rwx (write `0o660`, not `660` or `0660`), `route_prefix` without a
-leading or with a trailing `/`, with `.`/`..` segments or characters outside `[A-Za-z0-9._~-]`. `%env()%` values build
-as before (checked only when literal), except `route_prefix`, which can no longer come from env. Watermark names are
-kept verbatim — `brand-logo` was registered as `brand_logo` before. The route path now comes from `route_prefix`: drop
-any `prefix:` on the routes import (the old README recipe gave `/media/images/_image/{path}` against URLs
-`/media/images/…`, i.e. 404); without an explicit `cache.path` a custom prefix caches under `public/<route_prefix>`.
+See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: purge deletes only files the bundle wrote — SVG
+copies from earlier versions (no marker) and `….jpg` variants from up to 0.3 stay and must be deleted by hand; a `fit`
+other than `cover`/`contain`/ `scale-down` throws (it used to render URLs answering 400); a signed URL with a leading
+zero in a number (`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400;
+`ImageUrlGenerator` without `quality` now uses the configured quality of the format instead of a hard-coded `80` (URLs
+change only when `default_quality` is not 80 or `format_quality` is set), a quality outside 1-100 — in config, prop,
+`image_url()` or the generator — throws, and `formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and
+`device_sizes` only breakpoints ≥ 1 once each, with a later config file replacing either list instead of appending to
+it. Values that used to break at runtime fail the build: unknown `default_watermark`, watermark names outside
+`[A-Za-z0-9_-]`, relative watermark paths, watermark `size` outside 1-100, negative `margin`, `blur.size` outside 1-64,
+negative `cache.ttl`, relative or empty `cache.path`, permission modes without owner rw/rwx (write `0o660`, not `660` or
+`0660`), `route_prefix` without a leading or with a trailing `/`, with `.`/`..` segments or characters outside
+`[A-Za-z0-9._~-]`. `%env()%` values build as before (checked only when literal), except `route_prefix`, which can no
+longer come from env. Watermark names are kept verbatim — `brand-logo` was registered as `brand_logo` before. The route
+path now comes from `route_prefix`: drop any `prefix:` on the routes import (the old README recipe gave
+`/media/images/_image/{path}` against URLs `/media/images/…`, i.e. 404); without an explicit `cache.path` a custom
+prefix caches under `public/<route_prefix>`.
 
 ## Upgrading from v0.3.0 or earlier
 

@@ -90,10 +90,15 @@ class LocalFilesystemCacheStorageTest extends TestCase
         $this->createCacheFile('photo.jpg/aa00bb11cc22dd33_800_auto_none_80.avif');
         $this->createCacheFile('photo.jpg/meta.json');
         $this->createSvgCopy('icons/cached.svg');
-        $foreign = ['logo.png', 'icons/cart.svg', 'css/site.css', 'meta.json', 'banner-800_600.webp', 'photo.jpg/notes.txt'];
+        $foreign = ['logo.png', 'icons/cart.svg', 'css/site.css', 'banner-800_600.webp', 'photo.jpg/notes.txt', '.htaccess.id-sign-image'];
         foreach ($foreign as $path) {
             $this->createCacheFile($path);
         }
+        // Same names as the bundle's, other content: the application's, also in a directory with a dot.
+        $foreign[] = 'v1.2/meta.json';
+        $this->createCacheFile('v1.2/meta.json', '{"version":"1.2"}');
+        $foreign[] = 'app.d/blur.txt';
+        $this->createCacheFile('app.d/blur.txt', 'notes');
         mkdir($this->cacheDir.'/empty');
 
         $count = $this->storage->purgeAll();
@@ -104,6 +109,36 @@ class LocalFilesystemCacheStorageTest extends TestCase
         }
         self::assertFileDoesNotExist($this->cacheDir.'/icons/cached.svg');
         self::assertDirectoryExists($this->cacheDir.'/empty', 'a directory nothing was deleted from stays');
+    }
+
+    /**
+     * A source without an extension (a hash-named upload) has a variants directory without a dot; its meta.json and
+     * blur.txt must still go, or height and placeholder stay those of the replaced image.
+     */
+    public function testDeleteBySourceRemovesMetadataOfASourceWithoutExtension(): void
+    {
+        $this->createCacheFile('avatars/42/aa00bb11cc22dd33_64_auto_none_80.webp');
+        $this->createCacheFile('avatars/42/meta.json');
+        $this->createCacheFile('avatars/42/blur.txt');
+
+        self::assertSame(3, $this->storage->deleteBySource('avatars/42'));
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/avatars/42');
+    }
+
+    public function testDeleteBySourceKeepsAMarkerWhoseSvgIsThere(): void
+    {
+        $this->createSvgCopy('icons/logo.svg');
+
+        self::assertSame(0, $this->storage->deleteBySource('icons/.logo.svg.id-sign-image'));
+        self::assertFileExists($this->cacheDir.'/icons/.logo.svg.id-sign-image');
+    }
+
+    public function testDeleteBySourceKeepsADirectoryItDeletedNothingFrom(): void
+    {
+        mkdir($this->cacheDir.'/uploads');
+
+        self::assertSame(0, $this->storage->deleteBySource('uploads'));
+        self::assertDirectoryExists($this->cacheDir.'/uploads');
     }
 
     public function testStrayVariantWithLeadingZerosIsPurged(): void
@@ -307,7 +342,11 @@ class LocalFilesystemCacheStorageTest extends TestCase
         $this->createCacheFile(CacheFiles::svgMarker($path));
     }
 
-    private function createCacheFile(string $path): void
+    /**
+     * meta.json and blur.txt get what the bundle writes into them (CacheFiles recognises them by content) unless
+     * $content says otherwise.
+     */
+    private function createCacheFile(string $path, ?string $content = null): void
     {
         $absolutePath = $this->cacheDir.'/'.$path;
         $dir = \dirname($absolutePath);
@@ -316,7 +355,11 @@ class LocalFilesystemCacheStorageTest extends TestCase
             mkdir($dir, 0o775, true);
         }
 
-        file_put_contents($absolutePath, 'test-data');
+        file_put_contents($absolutePath, $content ?? match (basename($path)) {
+            'meta.json' => '{"width":100,"height":75}',
+            'blur.txt' => 'data:image/jpeg;base64,/9j/4AAQ',
+            default => 'test-data',
+        });
     }
 
     private function removeDir(string $dir): void

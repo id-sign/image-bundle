@@ -97,6 +97,8 @@ class PurgeCacheCommand extends Command
         $atimeThreshold = null !== $accessedBefore ? $now - ((int) $accessedBefore * 86400) : null;
 
         $count = 0;
+        /** @var array<string, true> $emptied directories a file was deleted from */
+        $emptied = [];
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($this->cacheDirectory, \FilesystemIterator::SKIP_DOTS),
         );
@@ -127,8 +129,19 @@ class PurgeCacheCommand extends Command
                 if (str_ends_with(strtolower($path), '.svg')) {
                     @unlink(CacheFiles::svgMarker($path));
                 }
+
+                $emptied[$file->getPath()] = true;
             }
             ++$count;
+        }
+
+        // A variants directory whose last file went is removed, and its parents up to the cache directory as they
+        // empty; rmdir() fails on anything that still holds a file, the application's own included.
+        $root = rtrim($this->cacheDirectory, '/');
+        foreach (array_keys($emptied) as $dir) {
+            while (str_starts_with($dir, $root.'/') && @rmdir($dir)) {
+                $dir = \dirname($dir);
+            }
         }
 
         $action = $dryRun ? 'Would delete' : 'Deleted';
@@ -154,7 +167,7 @@ class PurgeCacheCommand extends Command
     {
         // Mirrors CacheStorageInterface::deleteBySource(): a single SVG copy, or the bundle's files in a subtree.
         if (is_file($path)) {
-            return CacheFiles::isOwned($path) ? 1 : 0;
+            return CacheFiles::isOwned($path) && !CacheFiles::isSvgMarker($path) ? 1 : 0;
         }
 
         return $this->countFilesRecursive($path);
