@@ -110,6 +110,8 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     private function lockDirectory(string $dir)
     {
         for ($attempt = 0; $attempt < 3; ++$attempt) {
+            // PHP caches the last stat(): without this, is_dir()/stat() can report the removed directory as present.
+            clearstatcache(true, $dir);
             $this->ensureDir($dir);
             $handle = @fopen($dir, 'r');
 
@@ -124,6 +126,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             }
 
             $locked = fstat($handle);
+            clearstatcache(true, $dir);
             $current = @stat($dir);
 
             if (false !== $locked && false !== $current && $locked['ino'] === $current['ino'] && $locked['dev'] === $current['dev']) {
@@ -135,6 +138,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
         }
 
         // Purged three times in a row while waiting: write unlocked, the rename stays atomic.
+        clearstatcache(true, $dir);
         $this->ensureDir($dir);
 
         return null;
