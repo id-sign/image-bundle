@@ -716,6 +716,20 @@ class ImageComponentTest extends TestCase
         self::assertStringEndsWith('_90.jpeg', $component->getFallbackSrc());
     }
 
+    public function testUnknownFitThrowsOnMount(): void
+    {
+        // An unknown fit put a URL answering 400 into every <source>; the page showed broken images, nothing else.
+        $component = $this->createComponentWithStubs();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $component->fit = 'fill';
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('<twig:Image src="uploads/photo.jpg" />: fit must be cover, contain, scale-down');
+
+        $component->postMount();
+    }
+
     public function testInvalidQualityThrowsOnMountEvenForSvg(): void
     {
         $component = $this->createComponentWithStubs();

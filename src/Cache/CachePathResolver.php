@@ -8,9 +8,27 @@ use IdSign\ImageBundle\Service\UrlSigner;
 
 class CachePathResolver
 {
+    /** The fit modes parse() accepts besides "none" (no fit). */
+    public const FITS = ['cover', 'contain', 'scale-down'];
+
     public function __construct(
         private readonly UrlSigner $urlSigner,
     ) {
+    }
+
+    /**
+     * Where a fit enters a URL: a value parse() does not accept would put a URL into every <source> that answers 400
+     * ("none" 403 — it is signed as a string but verified as null), and nothing on the page says why.
+     *
+     * @param string $context where the value came from, for the message
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function assertFit(?string $fit, string $context): void
+    {
+        if (null !== $fit && !\in_array($fit, self::FITS, true)) {
+            throw new \InvalidArgumentException(\sprintf('%s: fit must be %s, or omitted (got "%s").', $context, implode(', ', self::FITS), $fit));
+        }
     }
 
     /**

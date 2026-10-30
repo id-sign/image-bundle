@@ -34,7 +34,7 @@ are passed through unsigned and unprocessed.
 | `src`            | string        | yes      | Path relative to the `default` source; `@name/path` reads from a named source (see below)      |
 | `width`          | int           | yes      | Intrinsic image width in px (not display size) — see "Picking width" below                     |
 | `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set             |
-| `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` — required for `height` to affect processing |
+| `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` (anything else throws) — needed for `height` to affect processing |
 | `blur`           | bool          | no       | Inline blur placeholder                                                                        |
 | `quality`        | int\|map      | no       | 1-100 for every format, or `:quality="{avif: 70, webp: 90}"` for the named formats (see below) |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config)                              |
@@ -391,7 +391,8 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 ## Upgrading from v0.4.0 or earlier
 
-See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a signed URL with a leading zero in a number
+See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a `fit` other than `cover`/`contain`/
+`scale-down` throws (it used to render URLs answering 400); a signed URL with a leading zero in a number
 (`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400; `ImageUrlGenerator` without
 `quality` now uses the configured quality of the format instead of a hard-coded `80` (URLs change only when
 `default_quality` is not 80 or `format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the

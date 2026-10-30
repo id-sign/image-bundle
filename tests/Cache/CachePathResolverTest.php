@@ -179,6 +179,33 @@ class CachePathResolverTest extends TestCase
         }
     }
 
+    /**
+     * CachePathResolver::FITS (what the entry points accept) must be what parse() accepts besides "none".
+     */
+    public function testParseAcceptsExactlyTheFits(): void
+    {
+        foreach ([...CachePathResolver::FITS, 'fill', 'Cover', 'none'] as $fit) {
+            $parsed = $this->resolver->parse($this->resolver->resolve('photo.jpg', 800, 600, $fit, 80, 'webp'));
+
+            self::assertSame(\in_array($fit, CachePathResolver::FITS, true) || 'none' === $fit, null !== $parsed, $fit);
+        }
+    }
+
+    public function testAssertFitRejectsWhatParseDoesNotAccept(): void
+    {
+        CachePathResolver::assertFit(null, 'test');
+        CachePathResolver::assertFit('scale-down', 'test');
+
+        foreach (['fill', 'Cover', 'none', ''] as $fit) {
+            try {
+                CachePathResolver::assertFit($fit, 'test');
+                self::fail(\sprintf('fit "%s" must be rejected', $fit));
+            } catch (\InvalidArgumentException $e) {
+                self::assertStringContainsString('fit must be cover, contain, scale-down', $e->getMessage());
+            }
+        }
+    }
+
     public function testParseRejectsUppercaseFormat(): void
     {
         // Bundle always emits lowercase format extensions; uppercase is treated as tampering.

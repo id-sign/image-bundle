@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Twig;
 
+use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
 use IdSign\ImageBundle\Service\QualityResolver;
@@ -59,6 +60,7 @@ class ImageUrlExtension extends AbstractExtension
 
         // Before the metadata I/O below; the generator checks again for its direct callers.
         $this->qualityResolver->assertValid($quality, $src);
+        CachePathResolver::assertFit($fit, \sprintf('image_url() for src "%s"', $src));
 
         $resolvedWatermark = match (true) {
             false === $watermark => null,
