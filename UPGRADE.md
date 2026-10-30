@@ -150,7 +150,7 @@ Formats, URLs and responses:
   `fit` is no longer part of the URL (such URLs used to resize to the exact box and distort the image — the new URL is
   a new cache variant), and a `width` above `max_width` or below 1 throws.
 - A leading slash in `src` is dropped like `@default/`, so `/photo.jpg` and `photo.jpg` share one URL; a `src` with a
-  leading slash used to produce `/_image//…` URLs that answer 403 behind nginx.
+  leading slash used to produce `/_image//…` URLs.
 - If a custom `ImageSourceInterface` enforced per-image authorization in `exists()`, move it in front of the route —
   see [Security model](README.md#security-model).
 

@@ -233,8 +233,10 @@ about sources, and `@reference/logo.png` and `logo.png` can never share a cache 
 code (`ImageComponent::postMount()`, `ImageUrlExtension::imageUrl()`, `ImageUrlGenerator::generate()`,
 `PurgeCacheCommand`), so `@default/x.jpg`, `/x.jpg` and `x.jpg` yield one URL and one cache directory. The slash
 matters: `LocalFilesystemSource` and the cache storage ignore it, but it would stay in the signed payload and produce
-`/_image//x.jpg/…` — nginx merges the slashes (`merge_slashes` is on by default), the signature no longer matches and
-every request answers 403, while the Symfony dev server keeps the double slash and works. It strips in a loop, so it
+`/_image//x.jpg/…`. (The 0.4 notes claimed nginx's `merge_slashes` then broke the signature with a 403; with the
+stock `fastcgi_params` PHP gets the unmerged `REQUEST_URI` — `merge_slashes` only affects `$uri`/`try_files` — so
+that mechanism was not reproduced in the pre-0.5 web-server check. One URL per image is the point regardless.) It
+strips in a loop, so it
 is idempotent — `image_url()` normalizes and `ImageUrlGenerator::generate()` normalizes again. `NamedImageSource`
 deliberately rejects `@default/` and unknown names: `exists()` returns false, `getAbsolutePath()` throws
 `UnknownImageSourceException` (an `InvalidArgumentException`, same contract as `..`; `forDefaultPrefix()` carries a
