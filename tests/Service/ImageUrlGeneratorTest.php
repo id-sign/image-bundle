@@ -197,6 +197,14 @@ class ImageUrlGeneratorTest extends TestCase
         self::assertStringEndsWith('_50.avif', $generator->generateFromRequest($avif, 'photo.jpg', 800, quality: ['webp' => 90]));
     }
 
+    public function testUnknownFitIsRefused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('ImageUrlGenerator for src "photo.jpg": fit must be cover, contain, scale-down');
+
+        $this->generator->generate('photo.jpg', 800, 600, 'Cover', format: 'webp');
+    }
+
     public function testInvalidQualityIsRefusedEvenForSvg(): void
     {
         $this->expectException(\InvalidArgumentException::class);

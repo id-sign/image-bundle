@@ -388,6 +388,11 @@ Exception: `fit="scale-down"` with a source smaller than the box replaces `width
   `origH <= height`, or height unknown), the component and `image_url()` use the source dimensions as the effective
   width/height (`ImageMetadataReader::resolveScaleDownDimensions()`), so srcset has no candidates above the source width.
 
+`CachePathResolver::assertFit()` checks the value against `CachePathResolver::FITS` at the three entry points (component
+`postMount()`, `image_url()` before its metadata I/O, `ImageUrlGenerator::generate()`), like `width` and `quality`. An
+unknown fit used to be signed and put into every `<source>`: `parse()` answered 400, and `none` 403 (signed as the
+string, verified as `null`). `CachePathResolverTest` pins `FITS` to what `parse()` accepts.
+
 #### Lossless encoding
 
 `lossless=true` flips the encoder into its lossless codec path via `setOption('webp:lossless', 'true')` for WebP and

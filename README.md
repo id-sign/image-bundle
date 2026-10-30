@@ -330,7 +330,8 @@ Controls how the image is resized when both `width` and `height` are specified:
   smaller, the rendered `width`/`height` attributes, `srcset` and URL reflect the actual source size.
 
 When omitted, the server resizes by `width` only and keeps the source aspect ratio; `height` then only sets the HTML
-attribute (see [`height`](#height)).
+attribute (see [`height`](#height)). Any other value — `fill`, `Cover`, `none` — throws an `InvalidArgumentException`
+when the component is rendered, `image_url()` is called or `ImageUrlGenerator` builds the URL.
 
 ### `blur`
 
@@ -852,6 +853,10 @@ php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 ```
 
 ### Upgrading from v0.4.0 or earlier
+
+A `fit` other than `cover`, `contain` or `scale-down` now throws an `InvalidArgumentException` in the component,
+`image_url()` and `ImageUrlGenerator`. It used to render URLs that answered 400 (`none`: 403), so every `<source>` of
+the image was broken without an error anywhere.
 
 `image:purge` and `deleteBySource()` now delete only files the bundle wrote (see [Cache management](#cache-management)).
 SVG copies cached by earlier versions carry no marker and are therefore left in place: delete them once by hand — they

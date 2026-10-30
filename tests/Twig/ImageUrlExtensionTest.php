@@ -168,6 +168,18 @@ class ImageUrlExtensionTest extends TestCase
         self::assertStringEndsWith('_65.avif', $extension->imageUrl('photo.jpg', 800, quality: ['avif' => 65, 'webp' => 85]));
     }
 
+    public function testUnknownFitThrowsBeforeReadingMetadata(): void
+    {
+        $metadataReader = $this->createMock(ImageMetadataReader::class);
+        $metadataReader->expects($this->never())->method('calculateHeight');
+        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, new QualityResolver(80), null, true, 4096, false);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('fit must be cover, contain, scale-down');
+
+        $extension->imageUrl('photo.jpg', 800, fit: 'none', format: 'webp');
+    }
+
     public function testInvalidQualityThrowsBeforeReadingMetadata(): void
     {
         $metadataReader = $this->createMock(ImageMetadataReader::class);
