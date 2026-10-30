@@ -210,7 +210,9 @@ class ImagickProcessor implements ImageProcessorInterface
         try {
             $imgWidth = $imagick->getImageWidth();
             $imgHeight = $imagick->getImageHeight();
-            $targetWidth = (int) round($imgWidth * $options->size / 100);
+            // A small output with a small percentage rounds to 0 px, and thumbnailImage(0, 0) throws "Invalid image
+            // geometry" — a 500 for every such variant. One pixel is what the watermark then honestly is.
+            $targetWidth = max(1, (int) round($imgWidth * $options->size / 100));
             $watermark->thumbnailImage($targetWidth, 0);
             // A watermark exported in Display P3 or Adobe RGB is composited onto an sRGB image: convert it too.
             ColorProfile::normalizeToSrgb($watermark, $this->logger);

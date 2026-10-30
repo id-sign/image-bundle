@@ -418,6 +418,8 @@ and emit a byte-identical encoder-default file for every quality value. Setting 
 
 Applied after resize and the sRGB conversion, before strip/format conversion; the watermark itself goes through
 `ColorProfile::normalizeToSrgb()` after its `thumbnailImage()`, so a Display P3 PNG from Figma keeps its colours.
+The watermark width is `size` % of the output width, at least 1 px: below 50 (`size` × width) it rounded to 0 and
+`thumbnailImage(0, 0)` threw "Invalid image geometry" — a 500 for every such variant (2 % of a 24 px breakpoint).
 Uses `Imagick::compositeImage()` with manually calculated x/y
 position (not `setGravity()`, which has PHPStan type issues with Imagick enum constants).
 
@@ -679,7 +681,8 @@ the sole author.
   `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
   resolved per negotiated format),
   `ImagickProcessor`
-  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width),
+  (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width; a watermark
+  narrower than 1 px),
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
   `ExifOrientation` is covered through these two
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
