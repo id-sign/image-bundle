@@ -70,6 +70,32 @@ class IdSignImageExtensionTest extends TestCase
         self::assertSame(64_000_000, $container->getParameter('id_sign_image.max_source_pixels'));
     }
 
+    public function testLaterConfigFileReplacesDeviceSizes(): void
+    {
+        // Appending gave [640, 1080, 1080]: the 1080 candidate twice in every srcset.
+        $container = $this->load(
+            ['device_sizes' => [640, 1080]],
+            ['device_sizes' => [1080]],
+        );
+
+        self::assertSame([1080], $container->getParameter('id_sign_image.device_sizes'));
+    }
+
+    public function testDeviceSizesRejectDuplicates(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('must not list a breakpoint twice');
+
+        $this->load(['device_sizes' => [640, 1080, 640]]);
+    }
+
+    public function testDeviceSizesRejectZero(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->load(['device_sizes' => [0, 640]]);
+    }
+
     public function testFormatsAcceptOutputFormatsInGivenOrder(): void
     {
         self::assertSame(['avif', 'webp'], $this->load([])->getParameter('id_sign_image.formats'));

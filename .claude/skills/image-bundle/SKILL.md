@@ -148,6 +148,7 @@ SVG files render as plain `<img>` — no processing, no `<picture>`. Served via 
 ```yaml
 # config/packages/id_sign_image.yaml
 id_sign_image:
+    # breakpoints ≥ 1, each once; a later config file replaces the list
     device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
     format_quality:                 # format => 1-100 (avif, webp, jpeg, png); unlisted formats use default_quality
@@ -386,8 +387,8 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: `ImageUrlGenerator` without `quality` now uses
 the configured quality of the format instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or
 `format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws, and
-`formats` accepts only `avif`/`webp`/`jpeg`/`png` once each, with a later config file replacing the list instead of
-appending to it.
+`formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints ≥ 1 once each, with a
+later config file replacing either list instead of appending to it.
 
 ## Upgrading from v0.3.0 or earlier
 

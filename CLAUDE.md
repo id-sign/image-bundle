@@ -482,7 +482,9 @@ both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 - `formats` (priority order) is checked by `Configuration` against `OUTPUT_FORMATS` with no duplicates — `jpg`/`AVIF`
   used to build and render `<source type="application/octet-stream">` whose URLs `parse()` answers 400 — and uses
   `performNoDeepMerging()`: Symfony appends prototyped lists across config files, so a `when@prod` `[webp]` after a
-  base `[avif, webp]` gave a duplicate `<source>` and could never drop a format. `device_sizes` still appends.
+  base `[avif, webp]` gave a duplicate `<source>` and could never drop a format. `device_sizes` gets the same
+  treatment (no duplicates, `performNoDeepMerging()`) plus `min(1)` — a `0` breakpoint rendered `0w`, see Twig
+  component.
 - `getFallbackFormat(string $sourceExtension): string` — static, single source of truth for mapping source extensions to
   web-safe fallback formats (png stays png, gif/tiff/heic/bmp → jpeg, unknown → jpeg). Used by both `negotiate()` and
   `ImageComponent::getFallbackFormat()`.
@@ -617,8 +619,8 @@ the sole author.
 - Unit tests: `UrlSigner`, `FormatNegotiator`, `QualityResolver`, `CachePathResolver`, `SourceSizeValidator`,
   `ColorProfile`, `ExifInteroperability`, `LocalFilesystemSource`,
   `NamedImageSource`,
-  `SourcePath`, `IdSignImageExtension` (`sources`, `formats` and `format_quality` config, tagged registration,
-  compiled-container wiring — needs `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`,
+  `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, tagged
+  registration, compiled-container wiring — needs `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`,
   `SrcsetGenerator`,
   `ImageComponent` (per-format quality, map prop),
   `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
@@ -647,7 +649,7 @@ the sole author.
 
 ```yaml
 id_sign_image:
-    device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
+    device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]  # ≥ 1, each once; later file replaces
     default_quality: 80
     format_quality:                 # format => 1-100, formats not listed use default_quality
         avif: 55
