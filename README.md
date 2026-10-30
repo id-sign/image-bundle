@@ -46,6 +46,7 @@ id_sign_image:
 # config/packages/id_sign_image.yaml
 id_sign_image:
     # Breakpoints for responsive srcset generation
+    # A later config file (e.g. a when@prod block) replaces the list instead of extending it.
     device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
 
     # Default output quality (1-100)
@@ -850,9 +851,10 @@ outside 1-100 passed to the component, `image_url()` or `ImageUrlGenerator` thro
 instead of producing a URL.
 
 `formats` accepts only `avif`, `webp`, `jpeg` and `png`, each once — `jpg`, `AVIF` or `gif` used to build fine and
-render a `<source>` whose URLs answer 400, now they fail the container build. A `formats` list in a later config file
-(e.g. `when@prod`) now replaces the earlier one; it used to be appended (`[avif, webp]` + `[webp]` gave
-`[avif, webp, webp]`), so a file that relied on appending must list every format it wants.
+render a `<source>` whose URLs answer 400, now they fail the container build. `device_sizes` must list each breakpoint
+once, all ≥ 1 (a `0` rendered `0w`, which makes browsers drop the whole srcset). A `formats` or `device_sizes` list in
+a later config file (e.g. `when@prod`) now replaces the earlier one; it used to be appended (`[avif, webp]` + `[webp]`
+gave `[avif, webp, webp]`), so a file that relied on appending must list every value it wants.
 
 `ImageComponent` and `ImageUrlExtension` take a `QualityResolver` in place of `int $defaultQuality`, and
 `ImageUrlGenerator` takes one after the `FormatNegotiator`. This matters only if you construct them yourself or
