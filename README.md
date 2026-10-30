@@ -70,26 +70,27 @@ id_sign_image:
 
     # Cache settings
     cache:
-        ttl: 2592000            # 30 days in seconds (used in controller mode)
+        ttl: 2592000            # 30 days in seconds (controller mode only); 0 = re-encode on every request (debugging)
         path: '%kernel.project_dir%/public/_image'  # controller mode with access control: move outside public/
 
     # Blur placeholder
     blur:
         enabled: false          # Global default, can be overridden per component
-        size: 10                # Placeholder width in pixels
+        size: 10                # Placeholder width in pixels, at least 1
         quality: 30             # JPEG quality of the placeholder
 
-    # Default watermark profile applied to all images (null = no watermark)
+    # Default watermark profile applied to all images (null = no watermark); must be one of the profiles below
     default_watermark: ~
 
-    # Named watermark profiles
+    # Named watermark profiles. Names may contain letters, digits, "_" and "-" and are kept verbatim — they are
+    # what the watermark attribute and default_watermark refer to, and they appear in image URLs.
     watermarks:
         copyright:
-            path: '%kernel.project_dir%/data/watermark.png'  # Path to watermark image (PNG with transparency)
+            path: '%kernel.project_dir%/data/watermark.png'  # Absolute path to watermark image (PNG with transparency)
             position: 'bottom-right'  # top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right
             opacity: 50               # 0-100
-            size: 20                  # Watermark width as percentage of output image width
-            margin: 10                # Margin from edge in pixels
+            size: 20                  # Watermark width as percentage of output image width, 1-100
+            margin: 10                # Margin from edge in pixels, at least 0
         # Define additional profiles as needed:
         # client_logo:
         #     path: '%kernel.project_dir%/data/client-logo.png'
@@ -117,7 +118,7 @@ id_sign_image:
     # 'controller' = every request goes through PHP (enables TTL-based invalidation)
     serve_mode: 'public'
 
-    # URL prefix for image routes
+    # URL prefix for image routes: starts with "/", no trailing "/"
     route_prefix: '/_image'
 ```
 
@@ -855,6 +856,16 @@ render a `<source>` whose URLs answer 400, now they fail the container build. `d
 once, all ≥ 1 (a `0` rendered `0w`, which makes browsers drop the whole srcset). A `formats` or `device_sizes` list in
 a later config file (e.g. `when@prod`) now replaces the earlier one; it used to be appended (`[avif, webp]` + `[webp]`
 gave `[avif, webp, webp]`), so a file that relied on appending must list every value it wants.
+
+Other values that used to pass and break at runtime now fail the container build too: a `default_watermark` that
+names no profile in `watermarks` (every image URL answered 400), a watermark profile name with characters other than
+letters, digits, `_` and `-`, a relative watermark `path`, a watermark `size` outside 1-100 or a negative `margin`,
+`blur.size` below 1, a negative `cache.ttl` and a `route_prefix` without a leading or with a trailing `/`.
+
+Watermark profile names are now kept verbatim. Symfony used to turn `brand-logo` into `brand_logo`, so
+`default_watermark: brand-logo` and `watermark="brand-logo"` answered 400 while `brand_logo` worked. If your templates
+use the underscore form of a dashed profile name, rename the profile to that form or change the templates — an unknown
+name in `default_watermark` fails the build, an unknown `watermark` attribute still answers 400 per image.
 
 `ImageComponent` and `ImageUrlExtension` take a `QualityResolver` in place of `int $defaultQuality`, and
 `ImageUrlGenerator` takes one after the `FormatNegotiator`. This matters only if you construct them yourself or
