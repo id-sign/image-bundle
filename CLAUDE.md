@@ -479,6 +479,10 @@ both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 
 - `negotiate(string $acceptHeader, string $sourceExtension)` — low-level, takes raw Accept header
 - `negotiateFromRequest(Request $request, string $src)` — convenience wrapper, extracts Accept header and extension
+- `formats` (priority order) is checked by `Configuration` against `OUTPUT_FORMATS` with no duplicates — `jpg`/`AVIF`
+  used to build and render `<source type="application/octet-stream">` whose URLs `parse()` answers 400 — and uses
+  `performNoDeepMerging()`: Symfony appends prototyped lists across config files, so a `when@prod` `[webp]` after a
+  base `[avif, webp]` gave a duplicate `<source>` and could never drop a format. `device_sizes` still appends.
 - `getFallbackFormat(string $sourceExtension): string` — static, single source of truth for mapping source extensions to
   web-safe fallback formats (png stays png, gif/tiff/heic/bmp → jpeg, unknown → jpeg). Used by both `negotiate()` and
   `ImageComponent::getFallbackFormat()`.
@@ -613,8 +617,9 @@ the sole author.
 - Unit tests: `UrlSigner`, `FormatNegotiator`, `QualityResolver`, `CachePathResolver`, `SourceSizeValidator`,
   `ColorProfile`, `ExifInteroperability`, `LocalFilesystemSource`,
   `NamedImageSource`,
-  `SourcePath`, `IdSignImageExtension` (`sources` and `format_quality` config, tagged registration, compiled-container
-  wiring — needs `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`,
+  `SourcePath`, `IdSignImageExtension` (`sources`, `formats` and `format_quality` config, tagged registration,
+  compiled-container wiring — needs `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`,
+  `SrcsetGenerator`,
   `ImageComponent` (per-format quality, map prop),
   `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
   resolved per negotiated format),
@@ -650,7 +655,7 @@ id_sign_image:
     sources:                        # name => absolute path; "@name/path" in src, no prefix = default
         default: '%kernel.project_dir%/data'
         reference: '%kernel.project_dir%/assets/reference'
-    formats: [ 'avif', 'webp' ]
+    formats: [ 'avif', 'webp' ]       # FormatNegotiator::OUTPUT_FORMATS, each once; a later file replaces the list
     cache:
         ttl: 2592000                    # 30 days (controller mode only)
         path: '%kernel.project_dir%/public/_image'

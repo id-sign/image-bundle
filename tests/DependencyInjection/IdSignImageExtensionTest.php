@@ -70,6 +70,55 @@ class IdSignImageExtensionTest extends TestCase
         self::assertSame(64_000_000, $container->getParameter('id_sign_image.max_source_pixels'));
     }
 
+    public function testFormatsAcceptOutputFormatsInGivenOrder(): void
+    {
+        self::assertSame(['avif', 'webp'], $this->load([])->getParameter('id_sign_image.formats'));
+        self::assertSame(['webp', 'avif', 'jpeg'], $this->load(['formats' => ['webp', 'avif', 'jpeg']])->getParameter('id_sign_image.formats'));
+        self::assertSame([], $this->load(['formats' => []])->getParameter('id_sign_image.formats'), 'no <source>, only the fallback <img>');
+    }
+
+    /**
+     * @return iterable<string, array{list<mixed>}>
+     */
+    public static function invalidFormats(): iterable
+    {
+        yield '"jpg" instead of "jpeg"' => [['avif', 'jpg']];
+        yield 'uppercase' => [['AVIF']];
+        yield 'not an output format' => [['gif']];
+    }
+
+    /**
+     * @param list<mixed> $formats
+     */
+    #[DataProvider('invalidFormats')]
+    public function testFormatsRejectWhatTheControllerCannotServe(array $formats): void
+    {
+        // Built fine before, then rendered <source type="application/octet-stream"> with URLs answering 400.
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Permissible values');
+
+        $this->load(['formats' => $formats]);
+    }
+
+    public function testFormatsRejectDuplicates(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('must not list a format twice');
+
+        $this->load(['formats' => ['avif', 'webp', 'avif']]);
+    }
+
+    public function testLaterConfigFileReplacesFormats(): void
+    {
+        // e.g. base file [avif, webp], a when@prod block drops avif — appending gave [avif, webp, webp]
+        $container = $this->load(
+            ['formats' => ['avif', 'webp']],
+            ['formats' => ['webp']],
+        );
+
+        self::assertSame(['webp'], $container->getParameter('id_sign_image.formats'));
+    }
+
     public function testFormatQualityDefaultsToEmpty(): void
     {
         $container = $this->load([]);
