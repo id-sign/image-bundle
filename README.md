@@ -431,14 +431,24 @@ location /_image/ {
 }
 ```
 
-Caddy example:
+A regex `location` for image extensions — the usual block that sets long `expires` for assets — takes precedence over
+this prefix location: give it the same `try_files $uri /index.php$is_args$args;`, or every variant that is not cached
+yet answers 404 and is never generated.
+
+Caddy: the standard Symfony Caddyfile (`php_fastcgi` plus `file_server`) needs nothing extra — `php_fastcgi` tries the
+file first and `file_server` serves it. A dedicated block needs its own `file_server`: `php_fastcgi` does not serve
+static files, and `handle` blocks exclude each other, so without it every cached image answers an empty 200.
 
 ```
 handle /_image/* {
     try_files {path}
     php_fastcgi unix//run/php-fpm.sock
+    file_server
 }
 ```
+
+Apache: the standard Symfony vhost (`FallbackResource /index.php` or the `symfony/apache-pack` rewrite rules) needs
+nothing extra.
 
 FrankenPHP needs no extra configuration: `php_server` serves existing files from the web root before handing the
 request to PHP (its built-in `try_files {path} {path}/index.php index.php`), and `@` in the URL (`%40`) works.
@@ -551,22 +561,22 @@ clients. The bundle needs no configuration for this — it is the standard `Bina
    with, at `http` level, `map $uri $image_svg_csp { ~*\.svg$ "sandbox"; default ""; }`. nginx keeps `Content-Type`
    and `Cache-Control` from the PHP response, so the `immutable` caching headers survive, but it drops the rest —
    including the SVG security headers the controller sets (see
-   [Webserver hardening for SVG](#webserver-hardening-for-svg)), hence the two `add_header` lines. Check the
-   responses of the FrankenPHP and Apache setups below for the same two headers (`curl -I`).
+   [Webserver hardening for SVG](#webserver-hardening-for-svg)), hence the two `add_header` lines. FrankenPHP and
+   Apache below keep every header of the PHP response and need nothing extra.
 
-   FrankenPHP (from its [X-Sendfile documentation](https://frankenphp.dev/docs/x-sendfile/), paths adapted to a cache
-   in `var/image-cache`):
+   FrankenPHP (after its [X-Sendfile documentation](https://frankenphp.dev/docs/x-sendfile/), for a cache in
+   `var/image-cache` of an application in `/app`, the working directory of the FrankenPHP image):
 
    ```caddyfile
    root public/
 
    request_header X-Sendfile-Type x-accel-redirect
-   request_header X-Accel-Mapping ../var/image-cache=/image-cache
+   request_header X-Accel-Mapping /app/var/image-cache/=/
 
    intercept {
        @accel header X-Accel-Redirect *
        handle_response @accel {
-           root ../var/image-cache/
+           root var/image-cache/
            rewrite * {resp.header.X-Accel-Redirect}
            method * GET
            header -X-Accel-Redirect
@@ -577,13 +587,22 @@ clients. The bundle needs no configuration for this — it is the standard `Bina
    php_server
    ```
 
-   Apache with `mod_xsendfile`:
+   The mapping has to be absolute: the relative `../var/image-cache` of the FrankenPHP documentation never matches,
+   because `BinaryFileResponse` compares it with the file's `realpath()` — PHP then streams the file itself, without
+   an error. `root` is relative to FrankenPHP's working directory (or absolute).
+
+   Apache with `mod_xsendfile` (`libapache2-mod-xsendfile` on Debian/Ubuntu) and `mod_headers`:
 
    ```apache
    XSendFile On
    XSendFilePath /var/www/app/var/image-cache
    RequestHeader set X-Sendfile-Type X-Sendfile
    ```
+
+   In every mapping the path is the absolute, symlink-resolved `cache.path` — `BinaryFileResponse` matches it against
+   `realpath()`, so with a deployment symlink (`current -> releases/42`) give the resolved release path. A mapping that
+   does not match is silent: PHP streams the file. An offloaded response carries an `ETag` from the web server, which
+   `BinaryFileResponse` never sends — a quick `curl -I` shows whether the hand-over works.
 
 ## URL security
 
@@ -700,6 +719,8 @@ and could never be cached. The `add_header` lines do not apply to the fallback r
 controller with its own headers.
 
 ### Apache
+
+Needs `mod_headers` (`a2enmod headers` on Debian/Ubuntu).
 
 ```apache
 <LocationMatch "(?i)^/_image/.+\.svg$">

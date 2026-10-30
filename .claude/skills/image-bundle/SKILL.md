@@ -210,7 +210,7 @@ Rules:
 - The prefix stays in the URL (`/_image/%40reference/…`), in the HMAC signature and in the cache directory
   (`public/_image/@reference/screenshot.png/`), so `@reference/logo.png` and `logo.png` never share a cache entry.
   `@default/photo.jpg` and `/photo.jpg` are normalized to `photo.jpg` (a leading slash would otherwise be signed and
-  yield `/_image//…` URLs that answer 403 behind nginx).
+  yield `/_image//…` URLs).
 - An unknown source name behaves like a missing file: the page renders without `height`/blur, the image URL returns 404.
 - A leading `@` in `src` is reserved. A directory of the default source whose name starts with `@` must be renamed or
   registered as a source of that name (`sources: { scope: '%kernel.project_dir%/data/@scope' }` keeps URLs and cache
@@ -244,13 +244,19 @@ location /_image/ { try_files $uri /index.php$is_args$args; }
 
 FrankenPHP: `php_server` serves existing files from the web root before handing a request to PHP (its built-in
 `try_files {path} {path}/index.php index.php`), and `@` in the URL (`%40`) works, so nothing has to be configured.
-Caddy with PHP-FPM: `handle /_image/* { try_files {path}; php_fastcgi … }`.
+Caddy with PHP-FPM: the standard Symfony Caddyfile (`php_fastcgi` + `file_server`) needs nothing; a dedicated
+`handle /_image/*` block needs `try_files {path}`, `php_fastcgi …` and `file_server` (without it cached images answer
+an empty 200). nginx: a regex `location` for image extensions (asset caching) wins over `/_image/` and needs the same
+`try_files … /index.php$is_args$args`, or uncached variants answer 404.
 
 **Controller:** Every request through PHP. Enables TTL-based invalidation and access control — with `cache.path` outside
 the document root (`%kernel.project_dir%/var/image-cache`): under `public/` the web server's `try_files` serves cached
 variants without PHP and the firewall never sees them. Works with
 `X-Accel-Redirect`/`X-Sendfile` out of the box: set `framework.trust_x_sendfile_type_header` and the web server mapping
 (README has nginx, FrankenPHP and Apache configs) — PHP then sends only headers and the web server streams the file.
+The mapping must be the absolute, symlink-resolved `cache.path` (`BinaryFileResponse` compares `realpath()`; a
+mismatch silently streams through PHP — an `ETag` from the web server shows the hand-over works); nginx drops the SVG
+security headers and re-adds them with `add_header`, FrankenPHP and Apache keep them.
 
 In both modes a cached variant is served without consulting the source, so deleting a source file does not remove its
 variants. Call `deleteBySource()` or `image:purge <src> --force` when a source is deleted; in controller mode the
