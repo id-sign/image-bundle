@@ -180,6 +180,18 @@ class ImageUrlExtensionTest extends TestCase
         $extension->imageUrl('photo.jpg', 800, fit: 'none', format: 'webp');
     }
 
+    public function testHeightBelowOneThrowsBeforeReadingMetadata(): void
+    {
+        $metadataReader = $this->createMock(ImageMetadataReader::class);
+        $metadataReader->expects($this->never())->method('resolveScaleDownDimensions');
+        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, new QualityResolver(80), null, false, 4096, false);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('height must be at least 1');
+
+        $extension->imageUrl('photo.jpg', 800, height: -1, fit: 'scale-down', format: 'webp');
+    }
+
     public function testInvalidQualityThrowsBeforeReadingMetadata(): void
     {
         $metadataReader = $this->createMock(ImageMetadataReader::class);

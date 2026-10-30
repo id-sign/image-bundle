@@ -86,6 +86,7 @@ class ImageComponent
 
         $this->qualityResolver->assertValid($this->quality, $this->src);
         CachePathResolver::assertFit($this->fit, \sprintf('<twig:Image src="%s" />', $this->src));
+        CachePathResolver::assertHeight($this->height, \sprintf('<twig:Image src="%s" />', $this->src));
 
         $this->resolvedWatermark = match (true) {
             false === $this->watermark => null,

@@ -133,6 +133,9 @@ class IdSignImageExtensionTest extends TestCase
         yield 'file_permissions 660 (decimal)' => [['file_permissions' => 660], 'a plain 660 is decimal'];
         yield 'file_permissions without owner read' => [['file_permissions' => 0o200], 'file_permissions'];
         yield 'directory_permissions without owner execute' => [['directory_permissions' => 0o660], 'directory_permissions'];
+        yield 'negative file_permissions' => [['file_permissions' => -1], 'file_permissions'];
+        yield 'negative directory_permissions' => [['directory_permissions' => -1], 'directory_permissions'];
+        yield 'file_permissions true' => [['file_permissions' => true], 'got bool'];
     }
 
     public function testUsablePermissionsAndPathsAreAccepted(): void

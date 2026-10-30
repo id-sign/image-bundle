@@ -17,10 +17,10 @@ class Configuration implements ConfigurationInterface
     public const DEFAULT_SOURCE_PATH = '%kernel.project_dir%/data';
 
     /**
-     * Structure, types and the checks that hold for an %env()% value too. Ranges, paths, route_prefix and
-     * default_watermark are checked in IdSignImageExtension::validateValues(): Symfony validates an env value at build
-     * time with a dummy (0, ''), so a min(1) or a path check here fails every application that sets the option from
-     * the environment.
+     * Structure, types and the checks that hold for an %env()% value too. Ranges, paths, route_prefix,
+     * default_watermark and permission modes are checked in ConfigValueValidator, called from
+     * IdSignImageExtension::load(): Symfony validates an env value at build time with a dummy (0, ''), so a min(1) or
+     * a path check here fails every application that sets the option from the environment.
      */
     public function getConfigTreeBuilder(): TreeBuilder
     {

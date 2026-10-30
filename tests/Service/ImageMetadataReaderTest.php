@@ -37,6 +37,34 @@ class ImageMetadataReaderTest extends TestCase
      * frames.gif: 60x40 first frame, 1x1 last frame. pingImage() stops on the last frame, so the dimensions must come
      * from the first frame and the pixel limit must count both (2 401 pixels).
      */
+    /**
+     * A 1200×1 separator at 400 px rounds to 0; the processor makes it 400×1, the URL height has to match.
+     */
+    public function testCalculatedHeightIsAtLeastOnePixel(): void
+    {
+        $sourceDir = $this->cacheDir.'-source';
+        mkdir($sourceDir, 0o775, true);
+        $strip = new \Imagick();
+        $strip->newImage(1200, 1, 'black');
+        $strip->setImageFormat('png');
+        $strip->writeImage($sourceDir.'/strip.png');
+        $strip->clear();
+
+        try {
+            $reader = new ImageMetadataReader(
+                new LocalFilesystemSource($sourceDir),
+                new SourceSizeValidator(0),
+                new LocalFilesystemCacheStorage($this->cacheDir.'-strip', 3600, 0o660, 0o770),
+            );
+
+            self::assertSame(1, $reader->calculateHeight('strip.png', 400));
+        } finally {
+            unlink($sourceDir.'/strip.png');
+            rmdir($sourceDir);
+            $this->removeDir($this->cacheDir.'-strip');
+        }
+    }
+
     public function testMultiFrameSourceReportsTheFirstFrameAndCountsAllFramesTowardsTheLimit(): void
     {
         self::assertSame(['width' => 60, 'height' => 40], $this->reader->getDimensions('frames.gif'));

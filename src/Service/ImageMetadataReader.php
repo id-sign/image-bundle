@@ -71,7 +71,9 @@ class ImageMetadataReader implements ResetInterface
             return null;
         }
 
-        return (int) round($dimensions['height'] * $width / $dimensions['width']);
+        // At least 1 px like ImagickProcessor::proportionalHeight(): a 1200×1 separator at 400 px rounds to 0, which
+        // would go into a signed URL (with a fit) that parse() rejects, and into <img height="0">.
+        return max(1, (int) round($dimensions['height'] * $width / $dimensions['width']));
     }
 
     /**

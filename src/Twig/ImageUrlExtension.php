@@ -61,6 +61,7 @@ class ImageUrlExtension extends AbstractExtension
         // Before the metadata I/O below; the generator checks again for its direct callers.
         $this->qualityResolver->assertValid($quality, $src);
         CachePathResolver::assertFit($fit, \sprintf('image_url() for src "%s"', $src));
+        CachePathResolver::assertHeight($height, \sprintf('image_url() for src "%s"', $src));
 
         $resolvedWatermark = match (true) {
             false === $watermark => null,

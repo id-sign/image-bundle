@@ -730,6 +730,21 @@ class ImageComponentTest extends TestCase
         $component->postMount();
     }
 
+    public function testHeightBelowOneThrowsOnMount(): void
+    {
+        // parse() accepts no height below 1: with a fit every <source> answered 400.
+        $component = $this->createComponentWithStubs();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 800;
+        $component->height = 0;
+        $component->fit = 'cover';
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('<twig:Image src="uploads/photo.jpg" />: height must be at least 1');
+
+        $component->postMount();
+    }
+
     public function testInvalidQualityThrowsOnMountEvenForSvg(): void
     {
         $component = $this->createComponentWithStubs();
