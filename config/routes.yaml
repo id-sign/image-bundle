@@ -1,5 +1,6 @@
 id_sign_image:
-    path: '/_image/{path}'
+    # Follows id_sign_image.route_prefix — import this file without a "prefix:".
+    path: '%id_sign_image.route_prefix%/{path}'
     controller: IdSign\ImageBundle\Controller\ImageController
     methods: [GET]
     requirements:

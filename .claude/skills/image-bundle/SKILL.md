@@ -160,7 +160,7 @@ id_sign_image:
     formats: [ 'avif', 'webp' ]     # avif, webp, jpeg, png, each once; a later config file replaces the list
     cache:
         ttl: 2592000                # seconds, controller mode only; 0 = re-encode every request (debugging)
-        path: '%kernel.project_dir%/public/_image'
+        path: ~                     # default: %kernel.project_dir%/public + route_prefix
     blur:
         enabled: false
         size: 10                    # ≥ 1
@@ -181,7 +181,7 @@ id_sign_image:
     file_permissions: 0660          # permissions for cache files (null = umask default)
     directory_permissions: 0770     # permissions for cache directories
     serve_mode: 'public'
-    route_prefix: '/_image'         # leading "/", no trailing "/"
+    route_prefix: '/_image'         # leading "/", no trailing "/"; the route and default cache.path follow it
 ```
 
 ### Image sources
@@ -229,6 +229,10 @@ still works and takes precedence over `sources.default`.
 id_sign_image:
     resource: '@IdSignImageBundle/config/routes.yaml'
 ```
+
+Import **without** `prefix:` — the route path comes from `route_prefix`. A custom prefix needs only
+`route_prefix: '/media/images'`; the default `cache.path` follows it. Replace `/_image` in web server snippets and
+`access_control` with the prefix.
 
 ## Serve modes
 
@@ -391,7 +395,10 @@ the configured quality of the format instead of a hard-coded `80` (URLs change o
 later config file replacing either list instead of appending to it. Values that used to break at runtime fail the
 build: unknown `default_watermark`, watermark names outside `[A-Za-z0-9_-]`, relative watermark paths, watermark
 `size` outside 1-100, negative `margin`, `blur.size` below 1, negative `cache.ttl`, `route_prefix` without a leading
-or with a trailing `/`. Watermark names are kept verbatim — `brand-logo` was registered as `brand_logo` before.
+or with a trailing `/`. Watermark names are kept verbatim — `brand-logo` was registered as `brand_logo` before. The
+route path now comes from `route_prefix`: drop any `prefix:` on the routes import (the old README recipe gave
+`/media/images/_image/{path}` against URLs `/media/images/…`, i.e. 404); without an explicit `cache.path` a custom
+prefix caches under `public/<route_prefix>`.
 
 ## Upgrading from v0.3.0 or earlier
 
