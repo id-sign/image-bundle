@@ -142,6 +142,20 @@ class IdSignImageExtensionTest extends TestCase
         self::assertSame(0, $this->load(['cache' => ['ttl' => 0]])->getParameter('id_sign_image.cache.ttl'));
     }
 
+    public function testCachePathFollowsRoutePrefix(): void
+    {
+        // Public mode serves the URL path from the document root: the cache has to sit where try_files looks.
+        self::assertSame('%kernel.project_dir%/public/_image', $this->load([])->getParameter('id_sign_image.cache.path'));
+        self::assertSame('%kernel.project_dir%/public/media/images', $this->load(['route_prefix' => '/media/images'])->getParameter('id_sign_image.cache.path'));
+    }
+
+    public function testExplicitCachePathWins(): void
+    {
+        $container = $this->load(['route_prefix' => '/media/images', 'cache' => ['path' => '%kernel.project_dir%/var/image-cache']]);
+
+        self::assertSame('%kernel.project_dir%/var/image-cache', $container->getParameter('id_sign_image.cache.path'));
+    }
+
     public function testNestedRoutePrefixIsAccepted(): void
     {
         self::assertSame('/media/images', $this->load(['route_prefix' => '/media/images'])->getParameter('id_sign_image.route_prefix'));

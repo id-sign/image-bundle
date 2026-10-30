@@ -71,7 +71,8 @@ id_sign_image:
     # Cache settings
     cache:
         ttl: 2592000            # 30 days in seconds (controller mode only); 0 = re-encode on every request (debugging)
-        path: '%kernel.project_dir%/public/_image'  # controller mode with access control: move outside public/
+        path: ~                 # default: %kernel.project_dir%/public + route_prefix, where try_files finds the files;
+                                # controller mode with access control: move outside public/
 
     # Blur placeholder
     blur:
@@ -118,7 +119,8 @@ id_sign_image:
     # 'controller' = every request goes through PHP (enables TTL-based invalidation)
     serve_mode: 'public'
 
-    # URL prefix for image routes: starts with "/", no trailing "/"
+    # URL prefix of every image URL: starts with "/", no trailing "/". The route and the default cache.path follow it —
+    # import the bundle routes without a "prefix:".
     route_prefix: '/_image'
 ```
 
@@ -464,21 +466,19 @@ id_sign_image:
 
 ### Custom route prefix
 
-Import the bundle routes with a custom prefix to change the URL base path:
-
-```yaml
-# config/routes/id_sign_image.yaml
-id_sign_image:
-    resource: '@IdSignImageBundle/config/routes.yaml'
-    prefix: /media/images
-```
-
-Update the bundle config to match:
+Set `route_prefix`; nothing else needs to change:
 
 ```yaml
 id_sign_image:
     route_prefix: '/media/images'
 ```
+
+The bundle route takes its path from `route_prefix` (`'%id_sign_image.route_prefix%/{path}'`), so import
+`@IdSignImageBundle/config/routes.yaml` **without** a `prefix:` — a prefix on the import would be applied on top. The
+default `cache.path` follows too (`%kernel.project_dir%/public/media/images`), so in public mode the web server finds
+the cached files under the URL path. If you set `cache.path` yourself in public mode, it has to be the document root
+plus `route_prefix`. The web server snippets, `access_control` rules and nginx locations in this README use the default
+`/_image` — replace it with your prefix.
 
 ### Restricting access to authenticated users
 
@@ -496,7 +496,7 @@ id_sign_image:
 # config/packages/security.yaml
 security:
     access_control:
-        - { path: ^/_image, roles: ROLE_USER }
+        - { path: ^/_image, roles: ROLE_USER }   # your route_prefix
 ```
 
 In public mode, the web server serves cached files directly and bypasses PHP — Symfony's security firewall is not
@@ -866,6 +866,13 @@ Watermark profile names are now kept verbatim. Symfony used to turn `brand-logo`
 `default_watermark: brand-logo` and `watermark="brand-logo"` answered 400 while `brand_logo` worked. If your templates
 use the underscore form of a dashed profile name, rename the profile to that form or change the templates — an unknown
 name in `default_watermark` fails the build, an unknown `watermark` attribute still answers 400 per image.
+
+The image route now takes its path from `route_prefix`. The custom-prefix recipe of earlier READMEs — importing the
+routes with `prefix: /media/images` — produced the route `/media/images/_image/{path}` while the URLs were
+`/media/images/…`, so every uncached image answered 404. Drop the `prefix:` from the import and keep `route_prefix`.
+If you worked around it with `route_prefix: '/media/images/_image'` and the import prefix, drop the import prefix and
+keep that `route_prefix`. Without an explicit `cache.path`, a custom prefix now caches under
+`public/<route_prefix>` (where `try_files` looks) instead of `public/_image`; the old directory can be deleted.
 
 `ImageComponent` and `ImageUrlExtension` take a `QualityResolver` in place of `int $defaultQuality`, and
 `ImageUrlGenerator` takes one after the `FormatNegotiator`. This matters only if you construct them yourself or

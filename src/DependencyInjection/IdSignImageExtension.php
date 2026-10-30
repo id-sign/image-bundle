@@ -42,7 +42,8 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
         $container->setParameter('id_sign_image.format_quality', $config['format_quality']);
         $container->setParameter('id_sign_image.formats', $config['formats']);
         $container->setParameter('id_sign_image.cache.ttl', $config['cache']['ttl']);
-        $container->setParameter('id_sign_image.cache.path', $config['cache']['path']);
+        // Public mode serves the URL path from the document root, so the cache directory has to follow route_prefix.
+        $container->setParameter('id_sign_image.cache.path', $config['cache']['path'] ?? '%kernel.project_dir%/public'.$config['route_prefix']);
         $container->setParameter('id_sign_image.blur.enabled', $config['blur']['enabled']);
         $container->setParameter('id_sign_image.blur.size', $config['blur']['size']);
         $container->setParameter('id_sign_image.blur.quality', $config['blur']['quality']);
