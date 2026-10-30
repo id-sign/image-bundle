@@ -156,7 +156,7 @@ id_sign_image:
     sources:                        # name => absolute path; "@name/path" in src, no prefix = default
         default: '%kernel.project_dir%/data'
         reference: '%kernel.project_dir%/assets/reference'
-    formats: [ 'avif', 'webp' ]
+    formats: [ 'avif', 'webp' ]     # avif, webp, jpeg, png, each once; a later config file replaces the list
     cache:
         ttl: 2592000
         path: '%kernel.project_dir%/public/_image'
@@ -385,7 +385,9 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: `ImageUrlGenerator` without `quality` now uses
 the configured quality of the format instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or
-`format_quality` is set), and a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws.
+`format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws, and
+`formats` accepts only `avif`/`webp`/`jpeg`/`png` once each, with a later config file replacing the list instead of
+appending to it.
 
 ## Upgrading from v0.3.0 or earlier
 

@@ -63,7 +63,8 @@ id_sign_image:
         default: '%kernel.project_dir%/data'
         reference: '%kernel.project_dir%/assets/reference'
 
-    # Output formats in priority order (used for <source> elements in <picture>)
+    # Output formats in priority order (used for <source> elements in <picture>): avif, webp, jpeg, png.
+    # A later config file (e.g. a when@prod block) replaces the list instead of extending it.
     formats: [ 'avif', 'webp' ]
 
     # Cache settings
@@ -847,6 +848,11 @@ now use the configured quality of the format (`format_quality`, then `default_qu
 `default_quality` and `blur.quality` must be 1-100 — a value outside fails the container build — and a `quality`
 outside 1-100 passed to the component, `image_url()` or `ImageUrlGenerator` throws an `InvalidArgumentException`
 instead of producing a URL.
+
+`formats` accepts only `avif`, `webp`, `jpeg` and `png`, each once — `jpg`, `AVIF` or `gif` used to build fine and
+render a `<source>` whose URLs answer 400, now they fail the container build. A `formats` list in a later config file
+(e.g. `when@prod`) now replaces the earlier one; it used to be appended (`[avif, webp]` + `[webp]` gave
+`[avif, webp, webp]`), so a file that relied on appending must list every format it wants.
 
 `ImageComponent` and `ImageUrlExtension` take a `QualityResolver` in place of `int $defaultQuality`, and
 `ImageUrlGenerator` takes one after the `FormatNegotiator`. This matters only if you construct them yourself or
