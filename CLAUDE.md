@@ -38,7 +38,8 @@ src/
 ├── IdSignImageBundle.php
 ├── DependencyInjection/
 │   ├── IdSignImageExtension.php
-│   └── Configuration.php
+│   ├── Configuration.php
+│   └── ConfigValueValidator.php
 ├── Controller/
 │   └── ImageController.php
 ├── Service/
@@ -421,9 +422,21 @@ value object per profile. Watermark Imagick object gets `clear()` in finally blo
 `Configuration` keeps profile names verbatim (`normalizeKeys(false)`, like `sources`): key normalization used to
 register `brand-logo` as `brand_logo` while `default_watermark` and the prop kept the dash, so every URL answered 400.
 Names must match `[A-Za-z0-9_-]+` — what `CachePathResolver::parse()` accepts after `_wm-` — paths must be absolute
-(the `sources` rule, shared through `Configuration::ABSOLUTE_PATH`), `size` 1-100, `margin` ≥ 0, and a root-level
-rule checks on the merged config that `default_watermark` names a configured profile. A `watermark` prop naming an
-unknown profile is still only caught by the controller (400 per image).
+(the `sources` rule), `size` 1-100, `margin` ≥ 0, and `default_watermark` must name a configured profile (checked on
+the merged config). A `watermark` prop naming an unknown profile is still only caught by the controller (400 per
+image).
+
+Where the checks live: `Configuration` holds structure, types, enums, names and merging — what also holds for an
+`%env()%` value. Ranges (qualities, `blur.size` 1-64, watermark `size`, `device_sizes`, `max_width`), absolute paths
+(`sources`, watermark `path`, `cache.path`), `route_prefix`, `default_watermark` and the permission modes are in
+`ConfigValueValidator`, called from `IdSignImageExtension::load()`. Reason: Symfony's `ValidateEnvPlaceholdersPass`
+re-runs the config tree with a dummy for every env value (0 for `int:`, `''` otherwise), so a `min(1)` or a path check
+in the tree failed every application that sets the option from the environment — the first 0.5 draft did that for
+six options v0.4 accepted. In `load()` an env value is still a placeholder (`resolveEnvPlaceholders(…, $usedEnvs)`)
+and is skipped; it is resolved at runtime unchecked, as before. `route_prefix` is the one option that refuses env: it
+is the route path and the default cache directory, both fixed at build time. `IdSignImageExtensionTest` compiles a
+container with an env value per option. Permission modes must give the owner rw (files) / rwx (directories) and stay
+≤ 0o7777 — a decimal `660` (0o1224) and YAML's string `"0660"` are the usual mistakes.
 
 Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HMAC signature. Same image with different
 watermark profiles = different cached files.
@@ -652,7 +665,8 @@ the sole author.
 - Unit tests: `UrlSigner`, `FormatNegotiator`, `QualityResolver`, `CachePathResolver`, `SourceSizeValidator`,
   `ColorProfile`, `ExifInteroperability`, `LocalFilesystemSource`,
   `NamedImageSource`,
-  `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, tagged
+  `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, a container
+  compiled with an `%env()%` value per option, tagged
   registration, compiled-container wiring — needs `symfony/yaml`), `PurgeCacheCommand` and `LocalFilesystemCacheStorage`
   (both: only owned files deleted, foreign files and SVGs without marker kept),
   `SrcsetGenerator`,
@@ -688,7 +702,7 @@ the sole author.
 id_sign_image:
     device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]  # ≥ 1, each once; later file replaces
     default_quality: 80
-    format_quality:                 # format => 1-100, formats not listed use default_quality
+    format_quality:                 # example; default none. format => 1-100, unlisted formats use default_quality
         avif: 55
         webp: 75
     sources:                        # name => absolute path; "@name/path" in src, no prefix = default
@@ -697,10 +711,10 @@ id_sign_image:
     formats: [ 'avif', 'webp' ]       # FormatNegotiator::OUTPUT_FORMATS, each once; a later file replaces the list
     cache:
         ttl: 2592000                    # 30 days (controller mode only), ≥ 0; 0 = re-encode every request
-        path: ~                         # default: %kernel.project_dir%/public + route_prefix
+        path: ~                         # absolute; default: %kernel.project_dir%/public + route_prefix
     blur:
         enabled: false
-        size: 10                        # ≥ 1
+        size: 10                        # 1-64
         quality: 30                     # 1-100
     default_watermark: ~                # Profile name from watermarks, or null
     watermarks:                         # names [A-Za-z0-9_-]+, kept verbatim
@@ -715,8 +729,8 @@ id_sign_image:
     max_width: 4096                     # guard against memory exhaustion
     max_source_bytes: 20971520          # 20 MiB, 0 disables
     max_source_pixels: 64000000         # 64 MP, width × height from the header before decoding, 0 disables
-    file_permissions: 0660              # null = use umask default
-    directory_permissions: 0770
+    file_permissions: 0o660             # owner rw; null = use umask default (YAML: 0660 is a string)
+    directory_permissions: 0o770        # owner rwx
     serve_mode: 'public'                # 'public' or 'controller'
     route_prefix: '/_image'             # leading "/", no trailing "/"; route path and default cache.path follow it
 ```

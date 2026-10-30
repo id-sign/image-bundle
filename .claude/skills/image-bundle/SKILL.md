@@ -151,7 +151,7 @@ id_sign_image:
     # breakpoints ≥ 1, each once; a later config file replaces the list
     device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
-    format_quality:                 # format => 1-100 (avif, webp, jpeg, png); unlisted formats use default_quality
+    format_quality:                 # example, default none: format => 1-100; unlisted formats use default_quality
         avif: 55
         webp: 75
     sources:                        # name => absolute path; "@name/path" in src, no prefix = default
@@ -160,10 +160,10 @@ id_sign_image:
     formats: [ 'avif', 'webp' ]     # avif, webp, jpeg, png, each once; a later config file replaces the list
     cache:
         ttl: 2592000                # seconds, controller mode only; 0 = re-encode every request (debugging)
-        path: ~                     # default: %kernel.project_dir%/public + route_prefix
+        path: ~                     # absolute; default: %kernel.project_dir%/public + route_prefix
     blur:
         enabled: false
-        size: 10                    # ≥ 1
+        size: 10                    # 1-64
         quality: 30                 # 1-100
     default_watermark: ~            # a profile name from watermarks, or null
     watermarks:                     # names: letters, digits, "_", "-" — kept verbatim, used in URLs
@@ -178,8 +178,8 @@ id_sign_image:
     max_width: 4096                 # reject component width above this
     max_source_bytes: 20971520      # 20 MiB; 0 disables the check
     max_source_pixels: 64000000     # 64 MP (width × height from the header); 0 disables the check
-    file_permissions: 0660          # permissions for cache files (null = umask default)
-    directory_permissions: 0770     # permissions for cache directories
+    file_permissions: 0o660         # cache files, owner rw (null = umask default); YAML reads 0660 as a string
+    directory_permissions: 0o770    # cache directories, owner rwx
     serve_mode: 'public'
     route_prefix: '/_image'         # leading "/", no trailing "/"; the route and default cache.path follow it
 ```
@@ -392,17 +392,19 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 ## Upgrading from v0.4.0 or earlier
 
 See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a signed URL with a leading zero in a number
-(`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400; `ImageUrlGenerator` without `quality` now uses
-the configured quality of the format instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or
-`format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws, and
-`formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints ≥ 1 once each, with a
-later config file replacing either list instead of appending to it. Values that used to break at runtime fail the
-build: unknown `default_watermark`, watermark names outside `[A-Za-z0-9_-]`, relative watermark paths, watermark
-`size` outside 1-100, negative `margin`, `blur.size` below 1, negative `cache.ttl`, `route_prefix` without a leading
-or with a trailing `/`. Watermark names are kept verbatim — `brand-logo` was registered as `brand_logo` before. The
-route path now comes from `route_prefix`: drop any `prefix:` on the routes import (the old README recipe gave
-`/media/images/_image/{path}` against URLs `/media/images/…`, i.e. 404); without an explicit `cache.path` a custom
-prefix caches under `public/<route_prefix>`.
+(`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400; `ImageUrlGenerator` without
+`quality` now uses the configured quality of the format instead of a hard-coded `80` (URLs change only when
+`default_quality` is not 80 or `format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the
+generator — throws, and `formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints
+≥ 1 once each, with a later config file replacing either list instead of appending to it. Values that used to break at
+runtime fail the build: unknown `default_watermark`, watermark names outside `[A-Za-z0-9_-]`, relative watermark paths,
+watermark `size` outside 1-100, negative `margin`, `blur.size` outside 1-64, negative `cache.ttl`, relative or empty
+`cache.path`, permission modes without owner rw/rwx (write `0o660`, not `660` or `0660`), `route_prefix` without a
+leading or with a trailing `/`, with `.`/`..` segments or characters outside `[A-Za-z0-9._~-]`. `%env()%` values build
+as before (checked only when literal), except `route_prefix`, which can no longer come from env. Watermark names are
+kept verbatim — `brand-logo` was registered as `brand_logo` before. The route path now comes from `route_prefix`: drop
+any `prefix:` on the routes import (the old README recipe gave `/media/images/_image/{path}` against URLs
+`/media/images/…`, i.e. 404); without an explicit `cache.path` a custom prefix caches under `public/<route_prefix>`.
 
 ## Upgrading from v0.3.0 or earlier
 

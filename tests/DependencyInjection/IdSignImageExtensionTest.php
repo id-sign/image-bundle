@@ -87,7 +87,7 @@ class IdSignImageExtensionTest extends TestCase
     public function testDefaultWatermarkMustNameAConfiguredProfile(): void
     {
         $this->expectException(InvalidConfigurationException::class);
-        $this->expectExceptionMessage('default_watermark "copyrigth" is not a configured watermark profile (configured: copyright)');
+        $this->expectExceptionMessage('"id_sign_image.default_watermark": "copyrigth" is not a configured watermark profile (configured: copyright)');
 
         $this->load([
             'watermarks' => ['copyright' => ['path' => '/srv/watermark.png']],
@@ -122,6 +122,89 @@ class IdSignImageExtensionTest extends TestCase
         yield 'route_prefix with trailing slash' => [['route_prefix' => '/_image/'], 'route_prefix must start with "/"'];
         yield 'route_prefix "/"' => [['route_prefix' => '/'], 'route_prefix must start with "/"'];
         yield 'route_prefix with a space' => [['route_prefix' => '/my images'], 'route_prefix must start with "/"'];
+        yield 'route_prefix "/."' => [['route_prefix' => '/.'], 'must not be "." or ".."'];
+        yield 'route_prefix "/.."' => [['route_prefix' => '/..'], 'must not be "." or ".."'];
+        yield 'route_prefix with ".." inside' => [['route_prefix' => '/a/../b'], 'must not be "." or ".."'];
+        yield 'relative cache.path' => [['cache' => ['path' => 'var/image-cache']], 'cache.path must be absolute'];
+        yield 'empty cache.path' => [['cache' => ['path' => '']], 'cache.path must be absolute'];
+        yield 'blur.size above 64' => [['blur' => ['size' => 65]], 'blur.size'];
+        yield 'max_width 0' => [['max_width' => 0], 'max_width'];
+        yield 'file_permissions as YAML reads 0660' => [['file_permissions' => '0660'], 'YAML reads 0660 as a string'];
+        yield 'file_permissions 660 (decimal)' => [['file_permissions' => 660], 'a plain 660 is decimal'];
+        yield 'file_permissions without owner read' => [['file_permissions' => 0o200], 'file_permissions'];
+        yield 'directory_permissions without owner execute' => [['directory_permissions' => 0o660], 'directory_permissions'];
+    }
+
+    public function testUsablePermissionsAndPathsAreAccepted(): void
+    {
+        $container = $this->load([
+            'file_permissions' => null,
+            'directory_permissions' => 0o2775,
+            'cache' => ['path' => '%kernel.project_dir%/var/image-cache'],
+            'route_prefix' => '/.well-known/images',
+            'blur' => ['size' => 64],
+        ]);
+
+        self::assertNull($container->getParameter('id_sign_image.file_permissions'));
+        self::assertSame('%kernel.project_dir%/var/image-cache', $container->getParameter('id_sign_image.cache.path'));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function envValues(): iterable
+    {
+        yield 'default_quality' => [['default_quality' => '%env(int:QUALITY)%']];
+        yield 'format_quality' => [['format_quality' => ['avif' => '%env(int:QUALITY)%']]];
+        yield 'blur' => [['blur' => ['size' => '%env(int:SIZE)%', 'quality' => '%env(int:QUALITY)%']]];
+        yield 'max_width' => [['max_width' => '%env(int:SIZE)%']];
+        yield 'device_sizes' => [['device_sizes' => ['%env(int:SIZE)%', 640]]];
+        yield 'source path' => [['sources' => ['reference' => '%env(DIR)%']]];
+        yield 'cache.path' => [['cache' => ['path' => '%env(DIR)%']]];
+        yield 'watermark path and size' => [['watermarks' => ['copyright' => ['path' => '%env(DIR)%', 'size' => '%env(int:SIZE)%']]]];
+        yield 'default_watermark' => [['watermarks' => ['copyright' => ['path' => '/srv/w.png']], 'default_watermark' => '%env(WATERMARK)%']];
+        yield 'permissions' => [['file_permissions' => '%env(int:MODE)%', 'directory_permissions' => '%env(int:MODE)%']];
+    }
+
+    /**
+     * Symfony validates an env value at build time with a dummy (0, ''); range and path checks in the config tree
+     * failed the build for each of these, which v0.4 accepted.
+     *
+     * @param array<string, mixed> $config
+     */
+    #[DataProvider('envValues')]
+    public function testEnvValuesBuild(array $config): void
+    {
+        $container = $this->compileWithEnv($config);
+
+        self::assertTrue($container->isCompiled());
+    }
+
+    public function testRoutePrefixFromEnvIsRejectedWithAReason(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('cannot come from an environment variable');
+
+        $this->compileWithEnv(['route_prefix' => '%env(PREFIX)%']);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function compileWithEnv(array $config): ContainerBuilder
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.project_dir', $this->projectDir);
+        $container->setParameter('kernel.secret', 'test-secret');
+        foreach (['QUALITY' => '75', 'SIZE' => '20', 'DIR' => '/srv/images', 'WATERMARK' => 'copyright', 'MODE' => (string) 0o770, 'PREFIX' => '/img'] as $name => $value) {
+            $container->setParameter('env('.$name.')', $value);
+        }
+        $container->register(RequestStack::class);
+        $container->registerExtension(new IdSignImageExtension());
+        $container->loadFromExtension('id_sign_image', $config);
+        $container->compile(true);
+
+        return $container;
     }
 
     /**
