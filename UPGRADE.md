@@ -56,6 +56,11 @@ are checked only when written literally. A permission mode from `%env(int:…)%`
 0o770. The exception is `route_prefix`: it is now the path of the bundle route and of the default cache directory,
 both fixed when the container is built, so an `%env()%` value fails the build with that explanation.
 
+### `image:purge`
+
+`--modified-before` and `--accessed-before` take a whole number of days; anything else fails with an error. A value
+such as `thirty` used to count as 0 days and purged the whole cache.
+
 ### Route and cache directory
 
 The image route now takes its path from `route_prefix`. The custom-prefix recipe of earlier READMEs — importing the

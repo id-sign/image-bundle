@@ -74,27 +74,20 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     {
         $absolutePath = $this->getAbsolutePath($cachePath);
         $dir = \dirname($absolutePath);
-        $this->ensureDir($dir);
 
         // flock() on the target directory itself: no lock files to leave behind or to purge, and the
         // variants of one source share a single lock (meta.json and blur.txt go through the lock-free write()).
-        $lockHandle = @fopen($dir, 'r');
+        $lockHandle = $this->lockDirectory($dir);
 
-        // If we can't obtain a lock handle (Windows, exotic FS), fall back to an unlocked write.
+        // If we can't obtain a lock (Windows, exotic FS), fall back to an unlocked write.
         // Correctness is preserved thanks to atomic rename; we just lose thundering-herd protection.
-        if (false === $lockHandle) {
+        if (null === $lockHandle) {
             $this->writeViaCallback($cachePath, $writer);
 
             return;
         }
 
         try {
-            if (!flock($lockHandle, \LOCK_EX)) {
-                $this->writeViaCallback($cachePath, $writer);
-
-                return;
-            }
-
             // Re-check under lock: another process may have produced the variant while we waited.
             if ($this->has($cachePath)) {
                 return;
@@ -105,6 +98,46 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             flock($lockHandle, \LOCK_UN);
             fclose($lockHandle);
         }
+    }
+
+    /**
+     * Creates $dir and takes its lock. A purge removes a directory only while it holds that lock (see deleteTree()),
+     * so a request that waited for it may hold a lock on a directory that no longer exists — writing there would
+     * fail with a 500. The lock then has to be taken again on the directory that exists now.
+     *
+     * @return resource|null the held lock, or null where directories cannot be locked
+     */
+    private function lockDirectory(string $dir)
+    {
+        for ($attempt = 0; $attempt < 3; ++$attempt) {
+            $this->ensureDir($dir);
+            $handle = @fopen($dir, 'r');
+
+            if (false === $handle) {
+                return null;
+            }
+
+            if (!flock($handle, \LOCK_EX)) {
+                fclose($handle);
+
+                return null;
+            }
+
+            $locked = fstat($handle);
+            $current = @stat($dir);
+
+            if (false !== $locked && false !== $current && $locked['ino'] === $current['ino'] && $locked['dev'] === $current['dev']) {
+                return $handle;
+            }
+
+            flock($handle, \LOCK_UN);
+            fclose($handle);
+        }
+
+        // Purged three times in a row while waiting: write unlocked, the rename stays atomic.
+        $this->ensureDir($dir);
+
+        return null;
     }
 
     private function writeViaCallback(string $cachePath, callable $writer): void
@@ -186,10 +219,7 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
 
         // A variants directory, or a directory prefix such as "uploads" or "@reference" — the whole
         // subtree goes, including the variants directories of every source image below it.
-        $count = $this->deleteContents($path);
-        @rmdir($path);
-
-        return $count;
+        return $this->deleteTree($path, true);
     }
 
     public function purgeAll(): int
@@ -198,33 +228,57 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             return 0;
         }
 
-        return $this->deleteContents($this->cacheDirectory);
+        return $this->deleteTree($this->cacheDirectory, false);
     }
 
     /**
-     * Deletes everything below $dir (not $dir itself) and returns the number of files removed.
+     * Deletes everything below $dir — and $dir itself when $includingDir — and returns the number of files removed.
      *
-     * rmdir() failures are deliberately ignored: a concurrent request may have written a fresh variant
-     * into a directory after its old files were unlinked, and that directory must stay.
+     * A directory a request is writing into holds the writeLocked() lock: it is skipped with everything in it, the
+     * next purge takes it. Deleting the staging file or the directory under a running encode made that request
+     * answer 500. rmdir() failures are ignored on purpose: a request may have written a fresh variant meanwhile.
      */
-    private function deleteContents(string $dir): int
+    private function deleteTree(string $dir, bool $includingDir): int
     {
-        $count = 0;
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
+        $lock = @fopen($dir, 'r');
 
-        /** @var \SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if ($file->isFile()) {
-                unlink($file->getPathname());
-                ++$count;
-            } elseif ($file->isDir()) {
-                @rmdir($file->getPathname());
-            }
+        if (false !== $lock && !flock($lock, \LOCK_EX | \LOCK_NB)) {
+            fclose($lock);
+
+            return 0;
         }
 
-        return $count;
+        try {
+            $count = 0;
+
+            foreach (scandir($dir) ?: [] as $name) {
+                if ('.' === $name || '..' === $name) {
+                    continue;
+                }
+
+                $path = $dir.'/'.$name;
+
+                if (is_link($path) && is_dir($path)) {
+                    continue;
+                }
+
+                if (is_dir($path)) {
+                    $count += $this->deleteTree($path, true);
+                } elseif (@unlink($path)) {
+                    ++$count;
+                }
+            }
+
+            if ($includingDir) {
+                @rmdir($dir);
+            }
+
+            return $count;
+        } finally {
+            if (false !== $lock) {
+                flock($lock, \LOCK_UN);
+                fclose($lock);
+            }
+        }
     }
 }

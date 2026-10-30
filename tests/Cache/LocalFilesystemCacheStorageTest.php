@@ -78,6 +78,65 @@ class LocalFilesystemCacheStorageTest extends TestCase
         self::assertFalse($this->storage->has('icons/logo.svg'));
     }
 
+    public function testPurgeSkipsADirectoryARequestIsWritingInto(): void
+    {
+        // A request encoding into uploads/photo.jpg/ holds its lock (writeLocked()); deleting its staging file or the
+        // directory under it made that request answer 500.
+        $this->createCacheFile('uploads/photo.jpg/.0123456789abcdef.tmp');
+        $this->createCacheFile('other.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
+        $lock = fopen($this->cacheDir.'/uploads/photo.jpg', 'r');
+        self::assertNotFalse($lock);
+        flock($lock, \LOCK_EX);
+
+        try {
+            self::assertSame(1, $this->storage->purgeAll());
+            self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/.0123456789abcdef.tmp');
+            self::assertDirectoryDoesNotExist($this->cacheDir.'/other.jpg');
+        } finally {
+            flock($lock, \LOCK_UN);
+            fclose($lock);
+        }
+
+        self::assertSame(1, $this->storage->purgeAll(), 'the next purge takes it');
+    }
+
+    /**
+     * A purge holds a directory's lock while it removes it; a request waiting for that lock must write into the
+     * directory that exists afterwards, not into the removed one.
+     */
+    public function testWriteLockedSurvivesItsDirectoryBeingPurgedWhileWaiting(): void
+    {
+        if (!\function_exists('pcntl_fork')) {
+            self::markTestSkipped('needs pcntl');
+        }
+
+        mkdir($this->cacheDir.'/photo.jpg');
+        $ready = $this->cacheDir.'.ready';
+        $pid = pcntl_fork();
+
+        if (0 === $pid) {
+            $lock = fopen($this->cacheDir.'/photo.jpg', 'r');
+            flock($lock, \LOCK_EX);
+            touch($ready);
+            usleep(300_000);
+            rmdir($this->cacheDir.'/photo.jpg');
+            flock($lock, \LOCK_UN);
+            exit(0);
+        }
+
+        while (!file_exists($ready)) {
+            usleep(10_000);
+        }
+        unlink($ready);
+
+        $this->storage->writeLocked('photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp', static function (string $tmpPath): void {
+            file_put_contents($tmpPath, 'variant');
+        });
+        pcntl_waitpid($pid, $status);
+
+        self::assertFileExists($this->cacheDir.'/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
+    }
+
     public function testHasReturnsFalseForExpiredFile(): void
     {
         $storage = new LocalFilesystemCacheStorage($this->cacheDir, 1, 0o660, 0o770);

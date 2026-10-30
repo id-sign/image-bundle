@@ -187,7 +187,8 @@ final class ConfigValueValidator
 
         // A negative int has every bit set: -1 passed the owner check and became 0o7777 — setuid, world-writable.
         if ($value < 0 || $value > 0o7777 || ($value & $ownerBits) !== $ownerBits) {
-            throw self::invalid($path, \sprintf('mode 0o%o must not exceed 0o7777 and must give the owner at least 0o%o; write it in octal, e.g. 0o%o — a plain %o is decimal (0o%o)', $value, $ownerBits, $example, $example, (int) decoct($example)));
+            // sprintf('%o') of a negative int prints its unsigned 64-bit form.
+            throw self::invalid($path, \sprintf('mode %s must be within 0…0o7777 and give the owner at least 0o%o; write it in octal, e.g. 0o%o — a plain %o is decimal (0o%o)', $value < 0 ? (string) $value : '0o'.decoct($value), $ownerBits, $example, $example, (int) decoct($example)));
         }
     }
 
