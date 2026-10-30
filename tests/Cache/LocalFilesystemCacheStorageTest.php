@@ -78,31 +78,9 @@ class LocalFilesystemCacheStorageTest extends TestCase
         self::assertFalse($this->storage->has('icons/logo.svg'));
     }
 
-    public function testPurgeSkipsADirectoryARequestIsWritingInto(): void
-    {
-        // A request encoding into uploads/photo.jpg/ holds its lock (writeLocked()); deleting its staging file or the
-        // directory under it made that request answer 500.
-        $this->createCacheFile('uploads/photo.jpg/.0123456789abcdef.tmp');
-        $this->createCacheFile('other.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
-        $lock = fopen($this->cacheDir.'/uploads/photo.jpg', 'r');
-        self::assertNotFalse($lock);
-        flock($lock, \LOCK_EX);
-
-        try {
-            self::assertSame(1, $this->storage->purgeAll());
-            self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/.0123456789abcdef.tmp');
-            self::assertDirectoryDoesNotExist($this->cacheDir.'/other.jpg');
-        } finally {
-            flock($lock, \LOCK_UN);
-            fclose($lock);
-        }
-
-        self::assertSame(1, $this->storage->purgeAll(), 'the next purge takes it');
-    }
-
     /**
-     * A purge holds a directory's lock while it removes it; a request waiting for that lock must write into the
-     * directory that exists afterwards, not into the removed one.
+     * A purge (here: another process holding the lock) removes the directory while a request waits for its lock; the
+     * request must write into the directory that exists afterwards, not into the removed one.
      */
     public function testWriteLockedSurvivesItsDirectoryBeingPurgedWhileWaiting(): void
     {

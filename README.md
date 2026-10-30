@@ -835,7 +835,8 @@ By default, all commands run in dry-run mode (showing what would be deleted). Ad
 
 The cache directory (`cache.path`, by default the document root plus `route_prefix`) belongs to the bundle:
 `image:purge` and `CacheStorageInterface::deleteBySource()` delete everything below it, or below the given source,
-whoever wrote it. Do not put files of your own there.
+whoever wrote it. Do not put files of your own there. A request that encodes a variant at the very moment a purge
+empties its directory can fail once; the next request generates the variant again.
 
 ### Purge all cached images
 
@@ -873,8 +874,7 @@ php bin/console image:purge --accessed-before=14 --force
 php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 ```
 
-Both options take a whole number of days. Directories the purge emptied are removed. A directory a request is writing a
-variant into at that moment is skipped by every purge and taken by the next one.
+Both options take a whole number of days.
 
 ### Programmatic cache invalidation
 

@@ -139,19 +139,6 @@ class PurgeCacheCommandTest extends TestCase
         self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
     }
 
-    public function testPurgeByAgeRemovesTheDirectoriesItEmptied(): void
-    {
-        $old = time() - 10 * 86400;
-        foreach (['aa00bb11cc22dd33_64_auto_none_80.webp', 'meta.json'] as $name) {
-            touch($this->cacheDir.'/uploads/photo.jpg/'.$name, $old);
-        }
-
-        $this->tester->execute(['--modified-before' => '5', '--force' => true]);
-
-        self::assertDirectoryDoesNotExist($this->cacheDir.'/uploads', 'photo.jpg/ and then uploads/ were emptied');
-        self::assertDirectoryExists($this->cacheDir.'/@reference/logo.png', 'its files are newer');
-    }
-
     public function testDryRunCountsNormalizedSource(): void
     {
         $this->tester->execute(['src' => '@default/uploads/photo.jpg']);

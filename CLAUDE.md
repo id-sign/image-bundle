@@ -120,8 +120,9 @@ The payload has no format, so `UrlSigner` memoizes signatures per payload for on
 between requests in worker mode): one HMAC covers every `<source>` and the fallback of a width — 8 instead of 17 per
 image at `width=1920` with the default breakpoints. With per-format quality (see Quality per format) it is one HMAC per
 width and distinct quality — up to 17 again, only for applications that set different qualities. Measured on the
-component at `width=1920`: 47.1 → 53.0 μs per raster image with three distinct qualities (avif, webp, JPEG fallback);
-with one quality the resolver costs nothing measurable (46.5 μs before the feature).
+component at `width=1920` (pre-release audit, median of 5): v0.4.0 45.2 μs per raster image, 0.5 47.4 μs with one
+quality for all formats — the entry-point checks (`assertValid()`, `assertFit()`, `assertHeight()`) and the resolver —
+and 51.4 μs with three distinct qualities (avif, webp, JPEG fallback). `image_url()`: 5.1 → 6.4 μs.
 `CachePathResolver::encodeForUrl()` is a single `rawurlencode()` pass with `%2F` restored to `/`. Measured on the
 component: 57.7 → 46.7 μs per raster image, 53.8 → 2.6 μs per SVG (see the SVG note under Twig component).
 
@@ -196,13 +197,19 @@ cached as a single file at `{src}` (no variants directory), so `deleteBySource('
 directly. The deletion is recursive, so a directory prefix works too: `deleteBySource('uploads/2024')` or
 `deleteBySource('@reference')` removes every variants directory below it — that is what `image:purge @reference --force`
 relies on. `rmdir()` failures are ignored on purpose: a directory that a concurrent request refilled with a fresh
-variant after its old files were unlinked must stay. Purge and a running encode share the directory lock of
-`writeLocked()`: `deleteTree()` takes each directory's lock non-blocking and skips a directory a request is writing
-into, with everything in it (deleting its staging file or the directory under the encoder answered 500; the next purge
-takes it), and `lockDirectory()` checks after `flock()` that the locked inode is still the directory's — a request that
-waited while a purge removed the directory creates it again and locks the new one. The age purge
-(`--modified-before`/`--accessed-before`, which take whole days only — `(int) "thirty"` was 0 and purged everything)
-removes the directories it emptied, up to the cache root. `image:purge <src>` validates `src` through
+variant after its old files were unlinked must stay. Purge takes no locks: a request encoding into a directory at that
+very moment can lose its staging file or directory and answer 500 once; the next request regenerates the variant. A
+lock-aware purge (skip a directory a request holds the `writeLocked()` lock of) was tried for 0.5 and dropped:
+`deleteBySource()` during an encode deleted nothing — a lost invalidation, stale variants served forever in public
+mode — and on NFS `flock()` on a directory always fails, so purge deleted nothing at all; removing emptied directories
+in the age purge reopened the race. What stayed is on the writer side: `lockDirectory()` re-creates and re-locks the
+directory when a purge removed it before `fopen()` or while the request waited for `flock()` (inode check after the
+lock, `clearstatcache()` first — PHP 8.2 otherwise reports the removed directory from its stat cache). Under a
+synthetic worst case — 4 writers against `purgeAll()` in a tight loop, 6 s — 0.4 lost ~1.6 writes per purge and 0.5
+~1.2: most failures are a purge deleting the directory under a writer that already holds the lock, which a lock-free
+purge accepts. In practice a purge is rare and the next request regenerates the variant. `--modified-before` and
+`--accessed-before` take whole days only — `(int) "thirty"` was 0 and
+purged everything. `image:purge <src>` validates `src` through
 `CacheStorageInterface::getAbsolutePath()` before counting or deleting, so the dry run reports exactly what `--force`
 deletes and never walks outside the cache directory (`..`, `.` or an empty path — e.g. `@default/` normalized — exit
 with an error).
@@ -692,9 +699,8 @@ the sole author.
   `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, a container
   compiled with an `%env()%` value per option, tagged
   registration, compiled-container wiring — needs `symfony/yaml`, cache directory holding a source refused),
-  `PurgeCacheCommand` (non-numeric days refused, age purge removes emptied directories), `LocalFilesystemCacheStorage`
-  (purge skips a directory a request holds the lock of; a write survives its directory being purged while it waited
-  for the lock — `pcntl_fork`, skipped without pcntl),
+  `PurgeCacheCommand` (non-numeric days refused), `LocalFilesystemCacheStorage` (a write survives its directory being
+  purged while it waited for the lock — `pcntl_fork`, skipped without pcntl),
   `SrcsetGenerator`,
   `ImageComponent` (per-format quality, map prop),
   `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
