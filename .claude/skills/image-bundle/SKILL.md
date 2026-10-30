@@ -330,6 +330,9 @@ php bin/console image:purge --modified-before=30 --force       # older than 30 d
 php bin/console image:purge --accessed-before=14 --force       # not accessed in 14 days
 ```
 
+Purge and `deleteBySource()` delete only files the bundle wrote (variants, `meta.json`, `blur.txt`, SVG copies marked
+by a hidden `.{name}.id-sign-image` file); anything else in the cache directory stays.
+
 ### Twig function `image_url()`
 
 For single URL generation in Twig (og tags, emails, JSON-LD):

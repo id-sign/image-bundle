@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Controller;
 
+use IdSign\ImageBundle\Cache\CacheFiles;
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\CacheStorageInterface;
 use IdSign\ImageBundle\Service\FormatNegotiator;
@@ -64,6 +65,11 @@ class ImageController
                 return $this->sourceTooLarge();
             }
 
+            // The copy has the name of any static SVG; the marker tells image:purge it is the bundle's (CacheFiles).
+            // Written first: a copy without its marker would never be purged, a stray marker is.
+            $this->cacheStorage->writeLocked(CacheFiles::svgMarker($src), static function (string $tmpPath): void {
+                touch($tmpPath);
+            });
             $this->cacheStorage->writeLocked($src, static function (string $tmpPath) use ($sourceFile): void {
                 if (!copy($sourceFile, $tmpPath)) {
                     throw new \RuntimeException(\sprintf('Failed to copy SVG source %s to %s', $sourceFile, $tmpPath));

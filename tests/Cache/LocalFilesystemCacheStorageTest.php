@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Tests\Cache;
 
+use IdSign\ImageBundle\Cache\CacheFiles;
 use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use PHPUnit\Framework\TestCase;
 
@@ -66,16 +67,51 @@ class LocalFilesystemCacheStorageTest extends TestCase
 
     public function testPurgeAll(): void
     {
-        $this->createCacheFile('a/1.avif');
-        $this->createCacheFile('b/2.webp');
-        $this->createCacheFile('icons/logo.svg');
+        $this->createCacheFile('a.jpg/aa00bb11cc22dd33_800_auto_none_80.avif');
+        $this->createCacheFile('b.png/aa00bb11cc22dd33_400_300_cover_75_lossless_wm-brand-logo.webp');
+        $this->createCacheFile('b.png/meta.json');
+        $this->createCacheFile('b.png/blur.txt');
+        $this->createCacheFile('b.png/.0123456789abcdef.tmp');
+        $this->createSvgCopy('icons/logo.svg');
+
+        $count = $this->storage->purgeAll();
+
+        self::assertSame(6, $count, 'the SVG marker is not counted');
+        self::assertSame([], glob($this->cacheDir.'/*') ?: [], 'emptied directories are removed');
+        self::assertFileDoesNotExist($this->cacheDir.'/icons/.logo.svg.id-sign-image');
+    }
+
+    /**
+     * The default cache.path is the document root plus route_prefix: with route_prefix /images it is public/images,
+     * which may hold the application's own files.
+     */
+    public function testPurgeAllLeavesFilesTheBundleDidNotWrite(): void
+    {
+        $this->createCacheFile('photo.jpg/aa00bb11cc22dd33_800_auto_none_80.avif');
+        $this->createCacheFile('photo.jpg/meta.json');
+        $this->createSvgCopy('icons/cached.svg');
+        $foreign = ['logo.png', 'icons/cart.svg', 'css/site.css', 'meta.json', 'banner-800_600.webp', 'photo.jpg/notes.txt'];
+        foreach ($foreign as $path) {
+            $this->createCacheFile($path);
+        }
+        mkdir($this->cacheDir.'/empty');
 
         $count = $this->storage->purgeAll();
 
         self::assertSame(3, $count);
-        self::assertFalse($this->storage->has('a/1.avif'));
-        self::assertFalse($this->storage->has('b/2.webp'));
-        self::assertFalse($this->storage->has('icons/logo.svg'));
+        foreach ($foreign as $path) {
+            self::assertFileExists($this->cacheDir.'/'.$path);
+        }
+        self::assertFileDoesNotExist($this->cacheDir.'/icons/cached.svg');
+        self::assertDirectoryExists($this->cacheDir.'/empty', 'a directory nothing was deleted from stays');
+    }
+
+    public function testStrayVariantWithLeadingZerosIsPurged(): void
+    {
+        // Cached by versions that accepted "_0800_" in a signed URL.
+        $this->createCacheFile('photo.jpg/aa00bb11cc22dd33_0800_auto_none_080.avif');
+
+        self::assertSame(1, $this->storage->purgeAll());
     }
 
     public function testHasReturnsFalseForExpiredFile(): void
@@ -91,8 +127,8 @@ class LocalFilesystemCacheStorageTest extends TestCase
 
     public function testDeleteBySourceRemovesRasterVariants(): void
     {
-        $this->createCacheFile('uploads/photo.jpg/abc_800_600_cover_80.avif');
-        $this->createCacheFile('uploads/photo.jpg/abc_400_300_none_75.webp');
+        $this->createCacheFile('uploads/photo.jpg/aa00bb11cc22dd33_800_600_cover_80.avif');
+        $this->createCacheFile('uploads/photo.jpg/aa00bb11cc22dd33_400_300_none_75.webp');
 
         $count = $this->storage->deleteBySource('uploads/photo.jpg');
 
@@ -102,26 +138,35 @@ class LocalFilesystemCacheStorageTest extends TestCase
 
     public function testDeleteBySourceRemovesDirectoryPrefixRecursively(): void
     {
-        $this->createCacheFile('@reference/logo.png/abc_800_auto_none_80.avif');
+        $this->createCacheFile('@reference/logo.png/aa00bb11cc22dd33_800_auto_none_80.avif');
         $this->createCacheFile('@reference/logo.png/meta.json');
-        $this->createCacheFile('@reference/icons/pin.svg');
-        $this->createCacheFile('uploads/photo.jpg/abc_800_auto_none_80.avif');
+        $this->createSvgCopy('@reference/icons/pin.svg');
+        $this->createCacheFile('uploads/photo.jpg/aa00bb11cc22dd33_800_auto_none_80.avif');
 
         $count = $this->storage->deleteBySource('@reference');
 
         self::assertSame(3, $count);
         self::assertDirectoryDoesNotExist($this->cacheDir.'/@reference');
-        self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/abc_800_auto_none_80.avif');
+        self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_800_auto_none_80.avif');
     }
 
     public function testDeleteBySourceRemovesSvgFile(): void
     {
-        $this->createCacheFile('icons/logo.svg');
+        $this->createSvgCopy('icons/logo.svg');
 
         $count = $this->storage->deleteBySource('icons/logo.svg');
 
         self::assertSame(1, $count);
         self::assertFileDoesNotExist($this->cacheDir.'/icons/logo.svg');
+        self::assertFileDoesNotExist($this->cacheDir.'/icons/.logo.svg.id-sign-image');
+    }
+
+    public function testDeleteBySourceLeavesAStaticSvg(): void
+    {
+        $this->createCacheFile('icons/logo.svg');
+
+        self::assertSame(0, $this->storage->deleteBySource('icons/logo.svg'));
+        self::assertFileExists($this->cacheDir.'/icons/logo.svg');
     }
 
     public function testDeleteBySourceReturnsZeroForNonexistent(): void
@@ -251,6 +296,15 @@ class LocalFilesystemCacheStorageTest extends TestCase
         $this->storage->writeLocked('../escape.webp', static function (string $tmpPath): void {
             file_put_contents($tmpPath, 'x');
         });
+    }
+
+    /**
+     * An SVG passthrough copy as ImageController writes it: the file plus its marker.
+     */
+    private function createSvgCopy(string $path): void
+    {
+        $this->createCacheFile($path);
+        $this->createCacheFile(CacheFiles::svgMarker($path));
     }
 
     private function createCacheFile(string $path): void

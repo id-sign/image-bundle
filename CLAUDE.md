@@ -65,6 +65,7 @@ src/
 │   ├── SourcePath.php
 │   └── UnknownImageSourceException.php
 ├── Cache/
+│   ├── CacheFiles.php
 │   ├── CacheStorageInterface.php
 │   ├── LocalFilesystemCacheStorage.php
 │   └── CachePathResolver.php
@@ -199,6 +200,18 @@ variant after its old files were unlinked must stay. `image:purge <src>` validat
 `CacheStorageInterface::getAbsolutePath()` before counting or deleting, so the dry run reports exactly what `--force`
 deletes and never walks outside the cache directory (`..`, `.` or an empty path — e.g. `@default/` normalized — exit
 with an error).
+
+Deletion — `deleteBySource()`, `purgeAll()` and `image:purge` (count, `--force`, `--modified-before`,
+`--accessed-before`) — touches only the files `CacheFiles::isOwned()` accepts, and removes only directories it
+emptied. The default `cache.path` is the document root + `route_prefix`, so `route_prefix: /images` makes it
+`public/images`, which may hold the application's own files; up to the release that introduced the derived default,
+purge deleted everything below the cache directory. Owned: variant names (a looser pattern than `parse()`, so stray
+leading-zero variants are purgeable), `meta.json`/`blur.txt` in a directory whose name has a dot (a variants directory
+carries the source file name), staging files `.{16 hex}.tmp`, and SVG copies — which have the name of any static SVG,
+so `serveSvg()` writes an empty marker `.{name}.id-sign-image` next to the copy, before the copy (a copy without marker
+would never be purged, a stray marker is). A marker is deleted together with its SVG, never on its own while the SVG
+exists, and not counted.
+SVG copies from earlier versions have no marker and stay; the upgrade notes say to delete them by hand.
 
 #### Image source abstraction
 
@@ -640,7 +653,8 @@ the sole author.
   `ColorProfile`, `ExifInteroperability`, `LocalFilesystemSource`,
   `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, tagged
-  registration, compiled-container wiring — needs `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`,
+  registration, compiled-container wiring — needs `symfony/yaml`), `PurgeCacheCommand` and `LocalFilesystemCacheStorage`
+  (both: only owned files deleted, foreign files and SVGs without marker kept),
   `SrcsetGenerator`,
   `ImageComponent` (per-format quality, map prop),
   `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
@@ -652,9 +666,9 @@ the sole author.
 - Functional test: `ImageController` — cache hit/miss, invalid path (400), invalid signature (403), missing source (
   404), source above `max_source_pixels`/`max_source_bytes` (413, nothing cached), cached variant of a deleted source
   still served (cache before source, raster and SVG), avif/webp format
-  generation, watermark processing, SVG passthrough (+ `sandbox`/`nosniff` headers), named sources (`@reference/` cache
-  directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400), signed URL with
-  a leading zero (400)
+  generation, watermark processing, SVG passthrough (+ `sandbox`/`nosniff` headers, purge marker), named sources
+  (`@reference/` cache directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A`
+  (400), signed URL with a leading zero (400)
 - Route test: `ImageRouteTest` — `config/routes.yaml` through FrameworkBundle's router, the route path follows
   `route_prefix` and matches the URLs `CachePathResolver` generates (default and nested prefix, encoded src)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
