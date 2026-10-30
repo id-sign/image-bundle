@@ -481,12 +481,11 @@ the cached files under the URL path. If you set `cache.path` yourself in public 
 plus `route_prefix`. The web server snippets, `access_control` rules and nginx locations in this README use the default
 `/_image` — replace it with your prefix.
 
-Prefer a prefix no other file lives under. `image:purge` deletes only what the bundle wrote (see
-[Cache management](#cache-management)), so files of your own in that directory survive a purge, but a URL whose path
-exists as a static file is answered by the web server before the bundle sees it. The cache directory must never be a
-source directory as well (`route_prefix: /images` with `sources.default: '%kernel.project_dir%/public/images'`): the
-variants directory `photo.jpg/` cannot be created where the source file `photo.jpg` lives, and every image answers
-500.
+**Pick a prefix whose directory belongs to the bundle alone.** The cache directory — by default the document root plus
+`route_prefix` — is emptied by `image:purge` (see [Cache management](#cache-management)), files of your own in it
+included. `route_prefix: /images` over a `public/images/` that holds your static images loses them on the first purge.
+A configuration in which the cache directory is a source directory or contains one
+(`sources.default: '%kernel.project_dir%/public/images'` with `route_prefix: /images`) fails the container build.
 
 ### Restricting access to authenticated users
 
@@ -813,12 +812,9 @@ named sources — your implementation then receives the raw `@name/…` string.
 
 By default, all commands run in dry-run mode (showing what would be deleted). Add `--force` to actually delete files.
 
-`image:purge` and `CacheStorageInterface::deleteBySource()` delete only files the bundle wrote — variants, `meta.json`
-and `blur.txt` (recognised by their content, not their place), leftover `.*.tmp` staging files and SVG copies — and
-remove only directories they emptied, so the directory may be shared with the application's own files (the default
-`cache.path` follows `route_prefix`). An SVG copy has the name of any static SVG, so the bundle writes an empty hidden
-marker next to it (`.logo.svg.id-sign-image`); an SVG without that marker is never deleted. Variants named by versions
-up to 0.3 (`….jpg`) are not recognised either and stay until deleted by hand.
+The cache directory (`cache.path`, by default the document root plus `route_prefix`) belongs to the bundle:
+`image:purge` and `CacheStorageInterface::deleteBySource()` delete everything below it, or below the given source,
+whoever wrote it. Do not put files of your own there.
 
 ### Purge all cached images
 
