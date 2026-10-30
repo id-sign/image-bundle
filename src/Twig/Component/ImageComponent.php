@@ -8,6 +8,7 @@ use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\BlurPlaceholderGenerator;
 use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
+use IdSign\ImageBundle\Service\QualityResolver;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
 use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\UX\TwigComponent\Attribute\AsTwigComponent;
@@ -22,7 +23,14 @@ class ImageComponent
     public ?int $height = null;
     public ?string $fit = null;
     public bool $blur = false;
-    public ?int $quality = null;
+
+    /**
+     * Output quality 1-100: an int for every format, or a map of format => quality for the formats it names
+     * (the others keep format_quality / default_quality). Null = configuration.
+     *
+     * @var int|array<string, int>|null
+     */
+    public int|array|null $quality = null;
 
     /**
      * Auto-calculate height from source aspect ratio. Null = use global config.
@@ -40,7 +48,6 @@ class ImageComponent
     public ?bool $lossless = null;
 
     private bool $svg = false;
-    private int $resolvedQuality;
     private ?int $resolvedHeight = null;
     private ?int $processingHeight = null;
     private ?string $resolvedWatermark = null;
@@ -51,7 +58,7 @@ class ImageComponent
         private readonly CachePathResolver $cachePathResolver,
         private readonly BlurPlaceholderGenerator $blurGenerator,
         private readonly ImageMetadataReader $metadataReader,
-        private readonly int $defaultQuality,
+        private readonly QualityResolver $qualityResolver,
         /** @var list<string> */
         private readonly array $formats,
         private readonly string $routePrefix,
@@ -77,7 +84,7 @@ class ImageComponent
             throw new \InvalidArgumentException(\sprintf('The "width" prop (%d) on <twig:Image src="%s" /> exceeds the configured id_sign_image.max_width (%d). Either lower the width or raise max_width in the bundle config.', $this->width, $this->src, $this->maxWidth));
         }
 
-        $this->resolvedQuality = $this->quality ?? $this->defaultQuality;
+        $this->qualityResolver->assertValid($this->quality, $this->src);
 
         $this->resolvedWatermark = match (true) {
             false === $this->watermark => null,
@@ -138,12 +145,13 @@ class ImageComponent
         $sources = [];
 
         foreach ($this->formats as $format) {
+            $quality = $this->qualityResolver->resolve($format, $this->quality);
             $srcset = $this->srcsetGenerator->generateSrcsetString(
                 $this->src,
                 $this->width,
                 $this->processingHeight,
                 $this->fit,
-                $this->resolvedQuality,
+                $quality,
                 $format,
                 $this->resolvedWatermark,
                 $this->resolvedLossless,
@@ -154,7 +162,7 @@ class ImageComponent
                 $this->width,
                 $this->processingHeight,
                 $this->fit,
-                $this->resolvedQuality,
+                $quality,
                 $format,
                 $this->resolvedWatermark,
                 $this->resolvedLossless,
@@ -182,13 +190,14 @@ class ImageComponent
             return '';
         }
 
+        $fallbackFormat = $this->getFallbackFormat();
         $cachePath = $this->cachePathResolver->resolve(
             $this->src,
             $this->width,
             $this->processingHeight,
             $this->fit,
-            $this->resolvedQuality,
-            $this->getFallbackFormat(),
+            $this->qualityResolver->resolve($fallbackFormat, $this->quality),
+            $fallbackFormat,
             $this->resolvedWatermark,
             $this->resolvedLossless,
         );

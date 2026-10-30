@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\DependencyInjection;
 
+use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\Config\Definition\Builder\TreeBuilder;
 use Symfony\Component\Config\Definition\ConfigurationInterface;
@@ -27,6 +28,18 @@ class Configuration implements ConfigurationInterface
                 ->end()
                 ->integerNode('default_quality')
                     ->defaultValue(80)
+                    ->min(1)->max(100)
+                ->end()
+                ->arrayNode('format_quality')
+                    ->info('Output quality per format, e.g. {avif: 55, webp: 75}. Formats not listed use default_quality.')
+                    ->useAttributeAsKey('format')
+                    ->integerPrototype()
+                        ->min(1)->max(100)
+                    ->end()
+                    ->validate()
+                        ->ifTrue(static fn (array $v): bool => [] !== array_diff(array_map('strval', array_keys($v)), FormatNegotiator::OUTPUT_FORMATS))
+                        ->thenInvalid('format_quality keys must be output formats ('.implode(', ', FormatNegotiator::OUTPUT_FORMATS).') — the bundle writes "jpeg", never "jpg" (got %s).')
+                    ->end()
                 ->end()
                 ->arrayNode('sources')
                     ->info('Named image sources: name => absolute base path. Reference them as "@name/path" in src. Paths without a prefix use the "default" source (added automatically when omitted).')
@@ -80,6 +93,7 @@ class Configuration implements ConfigurationInterface
                         ->end()
                         ->integerNode('quality')
                             ->defaultValue(30)
+                            ->min(1)->max(100)
                         ->end()
                     ->end()
                 ->end()

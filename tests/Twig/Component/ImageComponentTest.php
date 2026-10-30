@@ -8,12 +8,14 @@ use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Cache\LocalFilesystemCacheStorage;
 use IdSign\ImageBundle\Service\BlurPlaceholderGenerator;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
+use IdSign\ImageBundle\Service\QualityResolver;
 use IdSign\ImageBundle\Service\SourceSizeValidator;
 use IdSign\ImageBundle\Service\SrcsetGenerator;
 use IdSign\ImageBundle\Service\UrlSigner;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
 use IdSign\ImageBundle\Twig\Component\ImageComponent;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\PropertyAccess\PropertyAccess;
 
 class ImageComponentTest extends TestCase
 {
@@ -33,7 +35,7 @@ class ImageComponentTest extends TestCase
      * Variant with stubbed metadata reader — for tests that exercise URL output and have
      * no opinion about whether calculateHeight() gets called.
      */
-    private function createComponentWithStubs(): ImageComponent
+    private function createComponentWithStubs(QualityResolver $qualityResolver = new QualityResolver(80)): ImageComponent
     {
         $signer = new UrlSigner('test-secret');
         $resolver = new CachePathResolver($signer);
@@ -44,7 +46,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             $this->createStub(BlurPlaceholderGenerator::class),
             $this->createStub(ImageMetadataReader::class),
-            80,
+            $qualityResolver,
             ['avif', 'webp'],
             '/_image',
             false,
@@ -68,7 +70,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             $blurGenerator,
             $this->metadataReader,
-            80,
+            new QualityResolver(80),
             ['avif', 'webp'],
             '/_image',
             false,
@@ -279,7 +281,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             $this->createStub(BlurPlaceholderGenerator::class),
             $this->createStub(ImageMetadataReader::class),
-            80,
+            new QualityResolver(80),
             ['avif', 'webp'],
             '/_image',
             false,
@@ -311,7 +313,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             $this->createStub(BlurPlaceholderGenerator::class),
             $this->createStub(ImageMetadataReader::class),
-            80,
+            new QualityResolver(80),
             ['avif', 'webp'],
             '/_image',
             false,
@@ -344,7 +346,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             $this->createStub(BlurPlaceholderGenerator::class),
             $this->createStub(ImageMetadataReader::class),
-            80,
+            new QualityResolver(80),
             ['avif', 'webp'],
             '/_image',
             false,
@@ -476,7 +478,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             $this->createStub(BlurPlaceholderGenerator::class),
             new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../../Fixtures'), new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770)),
-            80,
+            new QualityResolver(80),
             ['webp'],
             '/_image',
             false,
@@ -513,7 +515,7 @@ class ImageComponentTest extends TestCase
             $resolver,
             new BlurPlaceholderGenerator($source, new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770), 10, 30),
             new ImageMetadataReader($source, new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770)),
-            80,
+            new QualityResolver(80),
             ['webp'],
             '/_image',
             false,
@@ -668,5 +670,85 @@ class ImageComponentTest extends TestCase
         $default->postMount();
 
         self::assertSame('/_image/icons/logo.svg', $default->getSvgSrc());
+    }
+
+    public function testFormatQualityGivesEachFormatItsOwnQuality(): void
+    {
+        $component = $this->createComponentWithStubs(new QualityResolver(80, ['avif' => 55, 'webp' => 75]));
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 1200;
+        $component->postMount();
+
+        [$avif, $webp] = $component->getSources();
+
+        self::assertSame(['55'], $this->qualitiesIn($avif['srcset']));
+        self::assertSame(['75'], $this->qualitiesIn($webp['srcset']));
+        self::assertStringEndsWith('_80.jpeg', $component->getFallbackSrc(), 'a format without format_quality uses default_quality');
+    }
+
+    public function testQualityMapOverridesOnlyTheFormatsItNames(): void
+    {
+        $component = $this->createComponentWithStubs(new QualityResolver(80, ['avif' => 55, 'webp' => 75]));
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 1200;
+        $component->quality = ['webp' => 90];
+        $component->postMount();
+
+        [$avif, $webp] = $component->getSources();
+
+        self::assertSame(['55'], $this->qualitiesIn($avif['srcset']));
+        self::assertSame(['90'], $this->qualitiesIn($webp['srcset']));
+        self::assertStringEndsWith('_80.jpeg', $component->getFallbackSrc());
+    }
+
+    public function testQualityIntOverridesEveryFormat(): void
+    {
+        $component = $this->createComponentWithStubs(new QualityResolver(80, ['avif' => 55, 'webp' => 75]));
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 1200;
+        $component->quality = 90;
+        $component->postMount();
+
+        [$avif, $webp] = $component->getSources();
+
+        self::assertSame(['90'], $this->qualitiesIn($avif['srcset']));
+        self::assertSame(['90'], $this->qualitiesIn($webp['srcset']));
+        self::assertStringEndsWith('_90.jpeg', $component->getFallbackSrc());
+    }
+
+    public function testInvalidQualityThrowsOnMountEvenForSvg(): void
+    {
+        $component = $this->createComponentWithStubs();
+        $component->src = 'icons/logo.svg';
+        $component->width = 120;
+        $component->quality = ['jpg' => 80];
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('icons/logo.svg');
+
+        $component->postMount();
+    }
+
+    /**
+     * HTML syntax passes quality="90" as a string; ux-twig-component writes props through the PropertyAccessor,
+     * whose coercive assignment has to turn it into the int branch of int|array|null.
+     */
+    public function testQualityAttributeStringMountsAsInt(): void
+    {
+        $component = $this->createComponentWithStubs();
+
+        PropertyAccess::createPropertyAccessor()->setValue($component, 'quality', '90');
+
+        self::assertSame(90, $component->quality);
+    }
+
+    /**
+     * @return list<string> distinct quality segments of the srcset URLs
+     */
+    private function qualitiesIn(string $srcset): array
+    {
+        preg_match_all('/_(\d+)\.(?:avif|webp|jpeg|png) \d+w/', $srcset, $matches);
+
+        return array_values(array_unique($matches[1]));
     }
 }

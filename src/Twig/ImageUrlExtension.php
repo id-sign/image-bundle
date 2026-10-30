@@ -6,6 +6,7 @@ namespace IdSign\ImageBundle\Twig;
 
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
+use IdSign\ImageBundle\Service\QualityResolver;
 use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Extension\AbstractExtension;
@@ -17,7 +18,7 @@ class ImageUrlExtension extends AbstractExtension
         private readonly ImageUrlGenerator $urlGenerator,
         private readonly ImageMetadataReader $metadataReader,
         private readonly RequestStack $requestStack,
-        private readonly int $defaultQuality,
+        private readonly QualityResolver $qualityResolver,
         private readonly ?string $defaultWatermark,
         private readonly bool $globalAutoDimensions,
         private readonly int $maxWidth,
@@ -32,12 +33,15 @@ class ImageUrlExtension extends AbstractExtension
         ];
     }
 
+    /**
+     * @param int|array<string, int>|null $quality resolved by the generator once the format is known
+     */
     public function imageUrl(
         string $src,
         int $width,
         ?int $height = null,
         ?string $fit = null,
-        ?int $quality = null,
+        int|array|null $quality = null,
         ?string $format = null,
         string|false|null $watermark = null,
         ?bool $autoDimensions = null,
@@ -53,7 +57,8 @@ class ImageUrlExtension extends AbstractExtension
             throw new \InvalidArgumentException(\sprintf('image_url() width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $width, $src, $this->maxWidth));
         }
 
-        $resolvedQuality = $quality ?? $this->defaultQuality;
+        // Before the metadata I/O below; the generator checks again for its direct callers.
+        $this->qualityResolver->assertValid($quality, $src);
 
         $resolvedWatermark = match (true) {
             false === $watermark => null,
@@ -85,12 +90,12 @@ class ImageUrlExtension extends AbstractExtension
             $request = $this->requestStack->getCurrentRequest();
 
             if (null !== $request) {
-                return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $resolvedQuality, $resolvedWatermark, $resolvedLossless);
+                return $this->urlGenerator->generateFromRequest($request, $src, $width, $processingHeight, $fit, $quality, $resolvedWatermark, $resolvedLossless);
             }
         }
 
         // Explicit format (validated by the generator), or no request to negotiate from — the generator then picks
         // a format the controller serves.
-        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $resolvedQuality, $format, $resolvedWatermark, $resolvedLossless);
+        return $this->urlGenerator->generate($src, $width, $processingHeight, $fit, $quality, $format, $resolvedWatermark, $resolvedLossless);
     }
 }

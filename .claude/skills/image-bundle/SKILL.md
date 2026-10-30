@@ -36,7 +36,7 @@ are passed through unsigned and unprocessed.
 | `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set             |
 | `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` — required for `height` to affect processing |
 | `blur`           | bool          | no       | Inline blur placeholder                                                                        |
-| `quality`        | int           | no       | Output quality 1-100 (default from config)                                                     |
+| `quality`        | int\|map      | no       | 1-100 for every format, or `:quality="{avif: 70, webp: 90}"` for the named formats (see below) |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config)                              |
 | `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default                                      |
 | `lossless`       | bool          | no       | Use lossless encoding for WebP/AVIF output (overrides global config)                           |
@@ -48,6 +48,14 @@ Syntax: `attr="…"` passes a string (coerced for `int` props), `:attr="…"` a 
 `{{ component('Image', { src: image.path, width: 800, fit: 'cover', alt: image.title }) }}`.
 
 Default: `decoding="async"`. No default `loading`.
+
+### Quality
+
+Each format gets the first of: the `quality` prop (an int for all formats, a map only for the formats it names),
+`format_quality` from config, `default_quality`. AVIF needs a clearly lower value than WebP/JPEG for the same look, so
+tune it per format in config rather than with one int prop — an int prop overrides every format, AVIF included. Map
+keys: `avif`, `webp`, `jpeg`, `png` (never `jpg`); a value outside 1-100 or an unknown key throws
+`InvalidArgumentException`. Quality is part of the URL: changing it means new variants, the old ones stay until purge.
 
 ### Picking width
 
@@ -142,6 +150,9 @@ SVG files render as plain `<img>` — no processing, no `<picture>`. Served via 
 id_sign_image:
     device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
+    format_quality:                 # format => 1-100 (avif, webp, jpeg, png); unlisted formats use default_quality
+        avif: 55
+        webp: 75
     sources:                        # name => absolute path; "@name/path" in src, no prefix = default
         default: '%kernel.project_dir%/data'
         reference: '%kernel.project_dir%/assets/reference'
@@ -245,7 +256,9 @@ variants also expire with `cache.ttl`.
 Raster URLs are HMAC-signed. Tampered parameters → 403. The format is not signed, so the controller generates only the
 configured `formats` plus the source's fallback format; other extensions → 404. The fallback follows the source
 extension: `jpg`/`jpeg` → `jpeg`, `png` → `png`, `webp` → `webp`, `avif` → `avif`, anything else (`gif`, `tiff`, `heic`,
-`bmp`, …) → `jpeg`. SVG URLs have no signature (no parameters to vary).
+`bmp`, …) → `jpeg`. SVG URLs have no signature (no parameters to vary). With different qualities per format a signed
+quality is reachable in every offered format (up to formats × distinct qualities variants per width) — bounded, by
+design.
 
 URL format: `/_image/{src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}`
 
@@ -352,8 +365,9 @@ $url = $imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 
 ```
 
 Same rules as the component: `width` must be 1…`max_width`, `height` is used only together with `fit` (without `fit`
-the server resizes by `width` and keeps the aspect ratio), an unservable `format` throws. `scale-down` keeps the
-requested `width` here (the component replaces it with the source dimensions).
+the server resizes by `width` and keeps the aspect ratio), an unservable `format` throws, `quality` takes an int or a
+map and, omitted, is the configured quality of the resulting format. `scale-down` keeps the requested `width` here (the
+component replaces it with the source dimensions).
 
 ### Programmatic invalidation
 
@@ -366,6 +380,12 @@ $cacheStorage->deleteBySource('uploads/2024');        // everything below a dire
 ```
 
 Call it whenever a source image is replaced or deleted — cached variants are served without consulting the source.
+
+## Upgrading from v0.4.0 or earlier
+
+See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: `ImageUrlGenerator` without `quality` now uses
+the configured quality of the format instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or
+`format_quality` is set), and a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws.
 
 ## Upgrading from v0.3.0 or earlier
 

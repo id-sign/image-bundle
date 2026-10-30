@@ -39,6 +39,7 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
 
         $container->setParameter('id_sign_image.device_sizes', $config['device_sizes']);
         $container->setParameter('id_sign_image.default_quality', $config['default_quality']);
+        $container->setParameter('id_sign_image.format_quality', $config['format_quality']);
         $container->setParameter('id_sign_image.formats', $config['formats']);
         $container->setParameter('id_sign_image.cache.ttl', $config['cache']['ttl']);
         $container->setParameter('id_sign_image.cache.path', $config['cache']['path']);

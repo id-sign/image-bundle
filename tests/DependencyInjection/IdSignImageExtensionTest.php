@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Tests\DependencyInjection;
 
 use IdSign\ImageBundle\DependencyInjection\IdSignImageExtension;
+use IdSign\ImageBundle\Service\QualityResolver;
 use IdSign\ImageBundle\Source\ImageSourceInterface;
 use IdSign\ImageBundle\Source\LocalFilesystemSource;
 use IdSign\ImageBundle\Source\NamedImageSource;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
@@ -66,6 +68,69 @@ class IdSignImageExtensionTest extends TestCase
 
         self::assertSame(20_971_520, $container->getParameter('id_sign_image.max_source_bytes'));
         self::assertSame(64_000_000, $container->getParameter('id_sign_image.max_source_pixels'));
+    }
+
+    public function testFormatQualityDefaultsToEmpty(): void
+    {
+        $container = $this->load([]);
+
+        self::assertSame(80, $container->getParameter('id_sign_image.default_quality'));
+        self::assertSame([], $container->getParameter('id_sign_image.format_quality'));
+    }
+
+    public function testFormatQualityMergesAcrossConfigFiles(): void
+    {
+        // e.g. base file tunes avif, a when@prod block adds webp and changes avif
+        $container = $this->load(
+            ['format_quality' => ['avif' => 55]],
+            ['format_quality' => ['webp' => 75, 'avif' => 50]],
+        );
+
+        self::assertSame(['avif' => 50, 'webp' => 75], $container->getParameter('id_sign_image.format_quality'));
+    }
+
+    public function testFormatQualityRejectsJpg(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('format_quality keys must be output formats');
+
+        $this->load(['format_quality' => ['jpg' => 80]]);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function outOfRangeQualities(): iterable
+    {
+        yield 'default_quality 0' => [['default_quality' => 0]];
+        yield 'default_quality 101' => [['default_quality' => 101]];
+        yield 'format_quality 0' => [['format_quality' => ['avif' => 0]]];
+        yield 'format_quality 101' => [['format_quality' => ['webp' => 101]]];
+        yield 'blur.quality 0' => [['blur' => ['quality' => 0]]];
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    #[DataProvider('outOfRangeQualities')]
+    public function testQualityOutsideOneToHundredIsRejected(array $config): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->load($config);
+    }
+
+    public function testCompiledContainerResolvesFormatQuality(): void
+    {
+        $container = $this->load(['default_quality' => 70, 'format_quality' => ['avif' => 50]]);
+        $container->getDefinition(QualityResolver::class)->setPublic(true);
+        $container->compile(true);
+
+        $resolver = $container->get(QualityResolver::class);
+
+        self::assertInstanceOf(QualityResolver::class, $resolver);
+        self::assertSame(50, $resolver->resolve('avif'));
+        self::assertSame(70, $resolver->resolve('webp'));
     }
 
     public function testConfiguredDefaultSourceReplacesBasePath(): void
