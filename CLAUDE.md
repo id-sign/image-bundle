@@ -250,8 +250,11 @@ configured file permissions (needed because `tempnam()` creates files with `0600
 - **`public` (default):** Cache path matches URL path. Web server serves files directly via `try_files`. PHP only called
   on first request per variant. TTL config has no effect.
 - **`controller`:** Every request goes through PHP. Enables TTL-based invalidation — `has()` checks `filemtime()`
-  against configured TTL. Use for access-controlled images — with `cache.path` outside the document root: under
-  `public/` the web server's `try_files` serves a cached variant without PHP and the firewall never runs.
+  against configured TTL. `ttl: 0` makes every variant stale at once, so each request re-encodes: kept on purpose for
+  debugging watermark/processing changes (they do not change the URL); the response stays `immutable`, so it only
+  reaches a browser with its cache disabled. Negative values fail the build. Use for access-controlled images — with
+  `cache.path` outside the document root: under `public/` the web server's `try_files` serves a cached variant without
+  PHP and the firewall never runs.
 
 In both modes a cached variant is served without consulting the source: `try_files` cannot, and the controller checks
 the cache before `ImageSourceInterface::exists()`, so a warm hit costs no source I/O (one `stat()` locally, a
@@ -391,6 +394,13 @@ position (not `setGravity()`, which has PHPStan type issues with Imagick enum co
 
 Named watermark profiles configured in bundle config. `WatermarkRegistry` manages profiles, `WatermarkOptions` is the
 value object per profile. Watermark Imagick object gets `clear()` in finally block.
+
+`Configuration` keeps profile names verbatim (`normalizeKeys(false)`, like `sources`): key normalization used to
+register `brand-logo` as `brand_logo` while `default_watermark` and the prop kept the dash, so every URL answered 400.
+Names must match `[A-Za-z0-9_-]+` — what `CachePathResolver::parse()` accepts after `_wm-` — paths must be absolute
+(the `sources` rule, shared through `Configuration::ABSOLUTE_PATH`), `size` 1-100, `margin` ≥ 0, and a root-level
+rule checks on the merged config that `default_watermark` names a configured profile. A `watermark` prop naming an
+unknown profile is still only caught by the controller (400 per image).
 
 Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HMAC signature. Same image with different
 watermark profiles = different cached files.
@@ -659,20 +669,20 @@ id_sign_image:
         reference: '%kernel.project_dir%/assets/reference'
     formats: [ 'avif', 'webp' ]       # FormatNegotiator::OUTPUT_FORMATS, each once; a later file replaces the list
     cache:
-        ttl: 2592000                    # 30 days (controller mode only)
+        ttl: 2592000                    # 30 days (controller mode only), ≥ 0; 0 = re-encode every request
         path: '%kernel.project_dir%/public/_image'
     blur:
         enabled: false
-        size: 10
-        quality: 30
-    default_watermark: ~                # Profile name or null
-    watermarks:
+        size: 10                        # ≥ 1
+        quality: 30                     # 1-100
+    default_watermark: ~                # Profile name from watermarks, or null
+    watermarks:                         # names [A-Za-z0-9_-]+, kept verbatim
         copyright:
-            path: '%kernel.project_dir%/data/watermark.png'
+            path: '%kernel.project_dir%/data/watermark.png'   # absolute
             position: 'bottom-right'
             opacity: 50
-            size: 20
-            margin: 10
+            size: 20                    # 1-100
+            margin: 10                  # ≥ 0
     auto_dimensions: false
     lossless: false                     # true lossless encoding for webp/avif (ignored for jpeg/png)
     max_width: 4096                     # guard against memory exhaustion
@@ -681,7 +691,7 @@ id_sign_image:
     file_permissions: 0660              # null = use umask default
     directory_permissions: 0770
     serve_mode: 'public'                # 'public' or 'controller'
-    route_prefix: '/_image'
+    route_prefix: '/_image'             # leading "/", no trailing "/"
 ```
 
 Custom source implementations are services tagged `id_sign_image.source` with a `name` attribute; a custom default

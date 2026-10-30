@@ -70,6 +70,83 @@ class IdSignImageExtensionTest extends TestCase
         self::assertSame(64_000_000, $container->getParameter('id_sign_image.max_source_pixels'));
     }
 
+    public function testWatermarkNameWithDashIsKeptVerbatimAndUsableAsDefault(): void
+    {
+        // Key normalization made it "brand_logo" while default_watermark kept the dash: every image URL answered 400.
+        $container = $this->load([
+            'watermarks' => ['brand-logo' => ['path' => '/srv/brand-logo.png']],
+            'default_watermark' => 'brand-logo',
+        ]);
+
+        /** @var array<string, mixed> $watermarks */
+        $watermarks = $container->getParameter('id_sign_image.watermarks');
+        self::assertSame(['brand-logo'], array_keys($watermarks));
+        self::assertSame('brand-logo', $container->getParameter('id_sign_image.default_watermark'));
+    }
+
+    public function testDefaultWatermarkMustNameAConfiguredProfile(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('default_watermark "copyrigth" is not a configured watermark profile (configured: copyright)');
+
+        $this->load([
+            'watermarks' => ['copyright' => ['path' => '/srv/watermark.png']],
+            'default_watermark' => 'copyrigth',
+        ]);
+    }
+
+    public function testDefaultWatermarkCanComeFromAnotherConfigFile(): void
+    {
+        $container = $this->load(
+            ['watermarks' => ['copyright' => ['path' => '/srv/watermark.png']]],
+            ['default_watermark' => 'copyright'],
+        );
+
+        self::assertSame('copyright', $container->getParameter('id_sign_image.default_watermark'));
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>, string}>
+     */
+    public static function invalidValues(): iterable
+    {
+        yield 'watermark name with a space' => [['watermarks' => ['my logo' => ['path' => '/srv/logo.png']]], 'Watermark profile names'];
+        yield 'watermark name with diacritics' => [['watermarks' => ['logo-č' => ['path' => '/srv/logo.png']]], 'Watermark profile names'];
+        yield 'relative watermark path' => [['watermarks' => ['copyright' => ['path' => 'data/watermark.png']]], 'Watermark paths must be absolute'];
+        yield 'watermark size 0' => [['watermarks' => ['copyright' => ['path' => '/srv/w.png', 'size' => 0]]], 'size'];
+        yield 'watermark size above 100' => [['watermarks' => ['copyright' => ['path' => '/srv/w.png', 'size' => 101]]], 'size'];
+        yield 'negative watermark margin' => [['watermarks' => ['copyright' => ['path' => '/srv/w.png', 'margin' => -1]]], 'margin'];
+        yield 'blur.size 0' => [['blur' => ['size' => 0]], 'size'];
+        yield 'negative cache.ttl' => [['cache' => ['ttl' => -1]], 'ttl'];
+        yield 'route_prefix without leading slash' => [['route_prefix' => '_image'], 'route_prefix must start with "/"'];
+        yield 'route_prefix with trailing slash' => [['route_prefix' => '/_image/'], 'route_prefix must start with "/"'];
+        yield 'route_prefix "/"' => [['route_prefix' => '/'], 'route_prefix must start with "/"'];
+        yield 'route_prefix with a space' => [['route_prefix' => '/my images'], 'route_prefix must start with "/"'];
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    #[DataProvider('invalidValues')]
+    public function testValueThatBreaksAtRuntimeFailsTheBuild(array $config, string $message): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage($message);
+
+        $this->load($config);
+    }
+
+    public function testCacheTtlZeroIsAccepted(): void
+    {
+        // Re-encodes on every request in controller mode — kept for debugging watermark/processing changes.
+        self::assertSame(0, $this->load(['cache' => ['ttl' => 0]])->getParameter('id_sign_image.cache.ttl'));
+    }
+
+    public function testNestedRoutePrefixIsAccepted(): void
+    {
+        self::assertSame('/media/images', $this->load(['route_prefix' => '/media/images'])->getParameter('id_sign_image.route_prefix'));
+    }
+
     public function testLaterConfigFileReplacesDeviceSizes(): void
     {
         // Appending gave [640, 1080, 1080]: the 1080 candidate twice in every srcset.

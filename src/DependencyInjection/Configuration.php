@@ -16,6 +16,12 @@ class Configuration implements ConfigurationInterface
      */
     public const DEFAULT_SOURCE_PATH = '%kernel.project_dir%/data';
 
+    /**
+     * "/…", "%param%…" or a Windows drive. A relative path would resolve against the current working directory, which
+     * differs between the web server and the console.
+     */
+    private const ABSOLUTE_PATH = '#^(/|%|[A-Za-z]:[\\\\/])#';
+
     public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('id_sign_image');
@@ -61,7 +67,7 @@ class Configuration implements ConfigurationInterface
                         ->validate()
                             // Relative paths would resolve against the current working directory, which differs
                             // between the web server and the console.
-                            ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match('#^(/|%|[A-Za-z]:[\\\\/])#', $v))
+                            ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match(self::ABSOLUTE_PATH, $v))
                             ->thenInvalid('Source paths must be absolute, e.g. "/srv/images" or "%%kernel.project_dir%%/data" (got %s).')
                         ->end()
                     ->end()
@@ -96,6 +102,8 @@ class Configuration implements ConfigurationInterface
                     ->children()
                         ->integerNode('ttl')
                             ->defaultValue(2592000)
+                            ->min(0)
+                            ->info('Seconds a cached variant stays fresh in controller mode. 0 re-encodes on every request (debugging only; responses stay immutable for browsers).')
                         ->end()
                         ->scalarNode('path')
                             ->defaultValue('%kernel.project_dir%/public/_image')
@@ -110,6 +118,8 @@ class Configuration implements ConfigurationInterface
                         ->end()
                         ->integerNode('size')
                             ->defaultValue(10)
+                            // Generated during the page render: an Imagick error here fails the whole page.
+                            ->min(1)
                         ->end()
                         ->integerNode('quality')
                             ->defaultValue(30)
@@ -123,10 +133,18 @@ class Configuration implements ConfigurationInterface
                 ->end()
                 ->arrayNode('watermarks')
                     ->useAttributeAsKey('name')
+                    // The name ends up in URLs (_wm-{name}) and in the watermark prop. Key normalization turned
+                    // "brand-logo" into "brand_logo" while default_watermark and the prop kept the dash: every URL 400.
+                    ->normalizeKeys(false)
                     ->arrayPrototype()
                         ->children()
                             ->scalarNode('path')
                                 ->isRequired()
+                                ->cannotBeEmpty()
+                                ->validate()
+                                    ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match(self::ABSOLUTE_PATH, $v))
+                                    ->thenInvalid('Watermark paths must be absolute, e.g. "%%kernel.project_dir%%/data/watermark.png" (got %s).')
+                                ->end()
                             ->end()
                             ->enumNode('position')
                                 ->values(['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'])
@@ -138,13 +156,20 @@ class Configuration implements ConfigurationInterface
                             ->end()
                             ->integerNode('size')
                                 ->defaultValue(20)
+                                ->min(1)->max(100)
                                 ->info('Watermark width as percentage of output image width')
                             ->end()
                             ->integerNode('margin')
                                 ->defaultValue(10)
+                                ->min(0)
                                 ->info('Margin from edge in pixels')
                             ->end()
                         ->end()
+                    ->end()
+                    ->validate()
+                        // CachePathResolver::parse() accepts only these characters after "_wm-".
+                        ->ifTrue(static fn (array $v): bool => [] !== preg_grep('/^[A-Za-z0-9_-]+$/D', array_map('strval', array_keys($v)), \PREG_GREP_INVERT))
+                        ->thenInvalid('Watermark profile names may only contain letters, digits, "_" and "-" (got %s).')
                     ->end()
                 ->end()
                 ->booleanNode('auto_dimensions')
@@ -187,7 +212,23 @@ class Configuration implements ConfigurationInterface
                 ->end()
                 ->scalarNode('route_prefix')
                     ->defaultValue('/_image')
+                    ->validate()
+                        // Prepended to every image URL: without the leading slash URLs are relative to the page,
+                        // a trailing one yields "/_image//…", which nginx merges and the route no longer matches.
+                        ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match('#^(/[A-Za-z0-9._~-]+)+$#D', $v))
+                        ->thenInvalid('route_prefix must start with "/" and must not end with one, e.g. "/_image" or "/media/images" (got %s).')
+                    ->end()
                 ->end()
+            ->end()
+            ->validate()
+                // A typo or a profile that does not exist would put an unknown _wm-{name} into every image URL: 400.
+                ->always(static function (array $v): array {
+                    if (null !== $v['default_watermark'] && !isset($v['watermarks'][$v['default_watermark']])) {
+                        throw new \InvalidArgumentException(\sprintf('default_watermark "%s" is not a configured watermark profile (configured: %s).', $v['default_watermark'], [] === $v['watermarks'] ? 'none' : implode(', ', array_keys($v['watermarks']))));
+                    }
+
+                    return $v;
+                })
             ->end()
         ;
 

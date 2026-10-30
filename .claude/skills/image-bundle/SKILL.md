@@ -159,20 +159,20 @@ id_sign_image:
         reference: '%kernel.project_dir%/assets/reference'
     formats: [ 'avif', 'webp' ]     # avif, webp, jpeg, png, each once; a later config file replaces the list
     cache:
-        ttl: 2592000
+        ttl: 2592000                # seconds, controller mode only; 0 = re-encode every request (debugging)
         path: '%kernel.project_dir%/public/_image'
     blur:
         enabled: false
-        size: 10
-        quality: 30
-    default_watermark: ~
-    watermarks:
+        size: 10                    # ≥ 1
+        quality: 30                 # 1-100
+    default_watermark: ~            # a profile name from watermarks, or null
+    watermarks:                     # names: letters, digits, "_", "-" — kept verbatim, used in URLs
         copyright:
-            path: '%kernel.project_dir%/data/watermark.png'
+            path: '%kernel.project_dir%/data/watermark.png'   # absolute
             position: 'bottom-right'    # 9 positions: top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right
             opacity: 50
-            size: 20                    # % of output image width
-            margin: 10                  # pixels from edge
+            size: 20                    # % of output image width, 1-100
+            margin: 10                  # pixels from edge, ≥ 0
     auto_dimensions: false
     lossless: false                 # true lossless encoding (webp/avif only, ignored for jpeg/png)
     max_width: 4096                 # reject component width above this
@@ -181,7 +181,7 @@ id_sign_image:
     file_permissions: 0660          # permissions for cache files (null = umask default)
     directory_permissions: 0770     # permissions for cache directories
     serve_mode: 'public'
-    route_prefix: '/_image'
+    route_prefix: '/_image'         # leading "/", no trailing "/"
 ```
 
 ### Image sources
@@ -388,7 +388,10 @@ See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: `ImageUrl
 the configured quality of the format instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or
 `format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws, and
 `formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints ≥ 1 once each, with a
-later config file replacing either list instead of appending to it.
+later config file replacing either list instead of appending to it. Values that used to break at runtime fail the
+build: unknown `default_watermark`, watermark names outside `[A-Za-z0-9_-]`, relative watermark paths, watermark
+`size` outside 1-100, negative `margin`, `blur.size` below 1, negative `cache.ttl`, `route_prefix` without a leading
+or with a trailing `/`. Watermark names are kept verbatim — `brand-logo` was registered as `brand_logo` before.
 
 ## Upgrading from v0.3.0 or earlier
 
