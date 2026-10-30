@@ -33,7 +33,7 @@ are passed through unsigned and unprocessed.
 |------------------|---------------|----------|------------------------------------------------------------------------------------------------|
 | `src`            | string        | yes      | Path relative to the `default` source; `@name/path` reads from a named source (see below)      |
 | `width`          | int           | yes      | Intrinsic image width in px (not display size) — see "Picking width" below                     |
-| `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set             |
+| `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set; ≥ 1        |
 | `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` (anything else throws) — needed for `height` to affect processing |
 | `blur`           | bool          | no       | Inline blur placeholder                                                                        |
 | `quality`        | int\|map      | no       | 1-100 for every format, or `:quality="{avif: 70, webp: 90}"` for the named formats (see below) |
@@ -178,7 +178,7 @@ id_sign_image:
     max_width: 4096                 # reject component width above this
     max_source_bytes: 20971520      # 20 MiB; 0 disables the check
     max_source_pixels: 64000000     # 64 MP (width × height from the header); 0 disables the check
-    file_permissions: 0o660         # cache files, owner rw (null = umask default); YAML reads 0660 as a string
+    file_permissions: 0o660         # owner rw (null = umask); YAML reads 0660 as a string; from env decimal (432)
     directory_permissions: 0o770    # cache directories, owner rwx
     serve_mode: 'public'
     route_prefix: '/_image'         # leading "/", no trailing "/"; the route and default cache.path follow it
@@ -392,23 +392,23 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 ## Upgrading from v0.4.0 or earlier
 
-See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: purge deletes only files the bundle wrote — SVG
-copies from earlier versions (no marker) and `….jpg` variants from up to 0.3 stay and must be deleted by hand; a `fit`
-other than `cover`/`contain`/ `scale-down` throws (it used to render URLs answering 400); a signed URL with a leading
-zero in a number (`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400;
-`ImageUrlGenerator` without `quality` now uses the configured quality of the format instead of a hard-coded `80` (URLs
-change only when `default_quality` is not 80 or `format_quality` is set), a quality outside 1-100 — in config, prop,
-`image_url()` or the generator — throws, and `formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and
-`device_sizes` only breakpoints ≥ 1 once each, with a later config file replacing either list instead of appending to
-it. Values that used to break at runtime fail the build: unknown `default_watermark`, watermark names outside
-`[A-Za-z0-9_-]`, relative watermark paths, watermark `size` outside 1-100, negative `margin`, `blur.size` outside 1-64,
-negative `cache.ttl`, relative or empty `cache.path`, permission modes without owner rw/rwx (write `0o660`, not `660` or
-`0660`), `route_prefix` without a leading or with a trailing `/`, with `.`/`..` segments or characters outside
-`[A-Za-z0-9._~-]`. `%env()%` values build as before (checked only when literal), except `route_prefix`, which can no
-longer come from env. Watermark names are kept verbatim — `brand-logo` was registered as `brand_logo` before. The route
-path now comes from `route_prefix`: drop any `prefix:` on the routes import (the old README recipe gave
-`/media/images/_image/{path}` against URLs `/media/images/…`, i.e. 404); without an explicit `cache.path` a custom
-prefix caches under `public/<route_prefix>`.
+See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a `height` below 1 throws like an unknown `fit`;
+purge deletes only files the bundle wrote — SVG copies from earlier versions (no marker) and `….jpg` variants from up to
+0.3 stay and must be deleted by hand; a `fit` other than `cover`/`contain`/ `scale-down` throws (it used to render URLs
+answering 400); a signed URL with a leading zero in a number (`_0800_`) no longer verifies (it used to yield unlimited
+variants per URL) and answers 400; `ImageUrlGenerator` without `quality` now uses the configured quality of the format
+instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or `format_quality` is set), a quality
+outside 1-100 — in config, prop, `image_url()` or the generator — throws, and `formats` accepts only
+`avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints ≥ 1 once each, with a later config file
+replacing either list instead of appending to it. Values that used to break at runtime fail the build: unknown
+`default_watermark`, watermark names outside `[A-Za-z0-9_-]`, relative watermark paths, watermark `size` outside 1-100,
+negative `margin`, `blur.size` outside 1-64, negative `cache.ttl`, relative or empty `cache.path`, permission modes
+without owner rw/rwx (write `0o660`, not `660` or `0660`), `route_prefix` without a leading or with a trailing `/`, with
+`.`/`..` segments or characters outside `[A-Za-z0-9._~-]`. `%env()%` values build as before (checked only when literal),
+except `route_prefix`, which can no longer come from env. Watermark names are kept verbatim — `brand-logo` was
+registered as `brand_logo` before. The route path now comes from `route_prefix`: drop any `prefix:` on the routes import
+(the old README recipe gave `/media/images/_image/{path}` against URLs `/media/images/…`, i.e. 404); without an explicit
+`cache.path` a custom prefix caches under `public/<route_prefix>`.
 
 ## Upgrading from v0.3.0 or earlier
 

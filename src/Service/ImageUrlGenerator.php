@@ -36,8 +36,8 @@ class ImageUrlGenerator
      * @param int|array<string, int>|null $quality
      *
      * @throws \InvalidArgumentException when $width is not within 1…max_width, $quality is not 1…100 or a map of
-     *                                   output format => 1…100, $fit is not cover, contain or scale-down, or $format
-     *                                   is one the controller would not serve for this source
+     *                                   output format => 1…100, $fit is not cover, contain or scale-down, $height is
+     *                                   below 1, or $format is one the controller would not serve for this source
      */
     public function generate(
         string $src,
@@ -61,6 +61,7 @@ class ImageUrlGenerator
 
         $this->qualityResolver->assertValid($quality, $src);
         CachePathResolver::assertFit($fit, \sprintf('ImageUrlGenerator for src "%s"', $src));
+        CachePathResolver::assertHeight($height, \sprintf('ImageUrlGenerator for src "%s"', $src));
 
         // Like <twig:Image>: an SVG is served as-is, there is no variant to sign. A signed raster URL would make the
         // controller rasterize an untrusted SVG, and its variants directory would collide with the passthrough file.

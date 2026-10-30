@@ -309,7 +309,7 @@ The display height in pixels. When omitted and auto dimensions is enabled (globa
 per-component via `autoDimensions` prop), the height is automatically calculated from the source image's aspect ratio.
 When both `width` and `height` are provided with a `fit` mode, the server produces an image with exactly these
 dimensions. Without `fit`, `height` is only the HTML attribute: the server resizes by `width` and keeps the source
-aspect ratio.
+aspect ratio. A `height` below 1 throws an `InvalidArgumentException`.
 
 ### `autoDimensions`
 
@@ -858,9 +858,10 @@ php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 
 ### Upgrading from v0.4.0 or earlier
 
-A `fit` other than `cover`, `contain` or `scale-down` now throws an `InvalidArgumentException` in the component,
-`image_url()` and `ImageUrlGenerator`. It used to render URLs that answered 400 (`none`: 403), so every `<source>` of
-the image was broken without an error anywhere.
+A `fit` other than `cover`, `contain` or `scale-down`, or a `height` below 1, now throws an `InvalidArgumentException`
+in the component, `image_url()` and `ImageUrlGenerator`. It used to render URLs that answered 400 (`fit="none"`: 403),
+so every `<source>` of the image was broken without an error anywhere. A height calculated from the aspect ratio is at
+least 1 px (a 1200×1 separator at 400 px rounded to 0).
 
 `image:purge` and `deleteBySource()` now delete only files the bundle wrote (see [Cache management](#cache-management)).
 SVG copies cached by earlier versions carry no marker, and variants named `….jpg` by versions up to 0.3 are not
@@ -890,13 +891,15 @@ names no profile in `watermarks` (every image URL answered 400), a watermark pro
 letters, digits, `_` and `-`, a relative watermark `path`, a watermark `size` outside 1-100 or a negative `margin`,
 `blur.size` outside 1-64, a negative `cache.ttl`, a relative or empty `cache.path` (under PHP-FPM it resolved against
 `public/`, so a cache meant to be private was served without the firewall), `file_permissions`/`directory_permissions`
-that do not give the owner read/write (files) or read/write/execute (directories) — `660` is decimal, write `0o660`;
+that are negative or do not give the owner read/write (files) or read/write/execute (directories) — `660` is decimal,
+write `0o660`;
 the `0660` of earlier READMEs is a string in YAML and never built — and a `route_prefix` that does not start with `/`,
 ends with one, has a `.` or `..` segment or characters other than letters, digits and `._~-`.
 
-Options set through `%env()%` build as before; their values are checked only when written literally. The exception is
-`route_prefix`: it is now the path of the bundle route and of the default cache directory, both fixed when the
-container is built, so an `%env()%` value fails the build with that explanation.
+Options set through `%env()%` build — as in v0.4, and now also `sources` and `max_width`, which did not; their values
+are checked only when written literally. A permission mode from `%env(int:…)%` is decimal: `432` for 0o660, `504` for
+0o770. The exception is `route_prefix`: it is now the path of the bundle route and of the default cache directory,
+both fixed when the container is built, so an `%env()%` value fails the build with that explanation.
 
 A profile that is defined with a dash and partially overridden in another config file under its underscore form
 (`brand-logo` in the base file, `brand_logo` in `when@prod`) no longer merges into one profile: the override is a new

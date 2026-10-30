@@ -137,10 +137,11 @@ final class ConfigValueValidator
         $example = $ownerBits | 0o060;
 
         if (!\is_int($value)) {
-            throw self::invalid($path, \sprintf('expected an octal mode such as 0o%o — YAML reads 0%o as a string', $example, $example));
+            throw self::invalid($path, \sprintf('expected an octal mode such as 0o%o, got %s', $example, \is_string($value) ? \sprintf('the string "%s" — YAML reads 0%o as a string', $value, $example) : get_debug_type($value)));
         }
 
-        if ($value > 0o7777 || ($value & $ownerBits) !== $ownerBits) {
+        // A negative int has every bit set: -1 passed the owner check and became 0o7777 — setuid, world-writable.
+        if ($value < 0 || $value > 0o7777 || ($value & $ownerBits) !== $ownerBits) {
             throw self::invalid($path, \sprintf('mode 0o%o must not exceed 0o7777 and must give the owner at least 0o%o; write it in octal, e.g. 0o%o — a plain %o is decimal (0o%o)', $value, $ownerBits, $example, $example, (int) decoct($example)));
         }
     }

@@ -386,6 +386,11 @@ Same rule applies to `image_url()` Twig function — `height` without `fit` is i
 Exception: `fit="scale-down"` with a source smaller than the box replaces `width`/`height` with the source dimensions
 (see Fit modes).
 
+`height` below 1 throws at the entry points (`CachePathResolver::assertHeight()`, next to `assertFit()`):
+`parse()` accepts no height below 1 since leading zeros are refused, so a `_800_0_cover_` URL answered 400 — before
+that it parsed and produced an image. `ImageMetadataReader::calculateHeight()` returns at least 1, like the
+processor's `proportionalHeight()` (a 1200×1 strip at 400 px).
+
 #### Fit modes
 
 - `cover` — fill dimensions, crop from center (`cropThumbnailImage`)
@@ -449,7 +454,8 @@ six options v0.4 accepted. In `load()` an env value is still a placeholder (`res
 and is skipped; it is resolved at runtime unchecked, as before. `route_prefix` is the one option that refuses env: it
 is the route path and the default cache directory, both fixed at build time. `IdSignImageExtensionTest` compiles a
 container with an env value per option. Permission modes must give the owner rw (files) / rwx (directories) and stay
-≤ 0o7777 — a decimal `660` (0o1224) and YAML's string `"0660"` are the usual mistakes.
+within 0…0o7777 (`-1` has every bit set and passed the owner check as 0o7777) — a decimal `660` (0o1224) and YAML's
+string `"0660"` are the usual mistakes; from `%env(int:…)%` the mode is decimal (432, 504), which the docs say.
 
 Watermark profile name is part of the cache path (`_wm-{profile}` suffix) and HMAC signature. Same image with different
 watermark profiles = different cached files.

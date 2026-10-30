@@ -32,6 +32,21 @@ class CachePathResolver
     }
 
     /**
+     * Where a height enters a URL: parse() accepts none below 1, so a 0 or a negative value in a signed URL answers
+     * 400 for every <source>.
+     *
+     * @param string $context where the value came from, for the message
+     *
+     * @throws \InvalidArgumentException
+     */
+    public static function assertHeight(?int $height, string $context): void
+    {
+        if (null !== $height && $height < 1) {
+            throw new \InvalidArgumentException(\sprintf('%s: height must be at least 1, or omitted (got %d).', $context, $height));
+        }
+    }
+
+    /**
      * Build a path that serves as both URL (after route prefix) and filesystem cache path.
      *
      * Format: {src}/{signature}_{w}_{h}_{fit}_{q}[_lossless][_wm-{profile}].{format}

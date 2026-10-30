@@ -197,6 +197,14 @@ class ImageUrlGeneratorTest extends TestCase
         self::assertStringEndsWith('_50.avif', $generator->generateFromRequest($avif, 'photo.jpg', 800, quality: ['webp' => 90]));
     }
 
+    public function testHeightBelowOneIsRefused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('ImageUrlGenerator for src "photo.jpg": height must be at least 1, or omitted (got 0)');
+
+        $this->generator->generate('photo.jpg', 800, 0, 'cover', format: 'webp');
+    }
+
     public function testUnknownFitIsRefused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
