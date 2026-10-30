@@ -28,6 +28,7 @@ class IdSignImageExtension extends Extension implements PrependExtensionInterfac
     {
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);
+        ConfigValueValidator::validate($config, $container);
 
         // Fail at container build, not at the first cache miss on a profiled source: a deployment that ships the
         // package without resources/ (export-ignore, vendor pruning) would otherwise answer 500 for iPhone photos.

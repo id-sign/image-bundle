@@ -71,13 +71,13 @@ id_sign_image:
     # Cache settings
     cache:
         ttl: 2592000            # 30 days in seconds (controller mode only); 0 = re-encode on every request (debugging)
-        path: ~                 # default: %kernel.project_dir%/public + route_prefix, where try_files finds the files;
-                                # controller mode with access control: move outside public/
+        path: ~                 # absolute; default: %kernel.project_dir%/public + route_prefix, where try_files finds
+                                # the files; controller mode with access control: move outside public/
 
     # Blur placeholder
     blur:
         enabled: false          # Global default, can be overridden per component
-        size: 10                # Placeholder width in pixels, at least 1
+        size: 10                # Placeholder width in pixels, 1-64 (inlined as a data URI into every page)
         quality: 30             # JPEG quality of the placeholder
 
     # Default watermark profile applied to all images (null = no watermark); must be one of the profiles below
@@ -112,8 +112,8 @@ id_sign_image:
     max_source_pixels: 64000000     # Reject source images above this many pixels (width × height). 0 disables.
 
     # Permissions for created cache files and directories
-    file_permissions: 0660        # null = use umask default
-    directory_permissions: 0770
+    file_permissions: 0o660       # octal with "0o" — YAML reads 0660 as a string; null = use umask default
+    directory_permissions: 0o770  # the owner needs rwx
 
     # 'public' = web server serves cached files directly (try_files)
     # 'controller' = every request goes through PHP (enables TTL-based invalidation)
@@ -447,10 +447,10 @@ request to PHP (its built-in `try_files {path} {path}/index.php index.php`), and
 Every image request goes through PHP. Enables TTL-based cache invalidation -- expired variants are regenerated on the
 next request. Use this when you need access control or TTL-based refresh.
 
-For access control, move `cache.path` out of the document root. With the default `%kernel.project_dir%/public/_image`
-a standard Symfony vhost (`try_files $uri /index.php$is_args$args`) serves an already cached variant as a static file:
-the first authorized visitor fills the cache, everybody after them gets the file without PHP, and the firewall never
-sees the request.
+For access control, move `cache.path` out of the document root. With the default (`%kernel.project_dir%/public` plus
+`route_prefix`) a standard Symfony vhost (`try_files $uri /index.php$is_args$args`) serves an already cached variant
+as a static file: the first authorized visitor fills the cache, everybody after them gets the file without PHP, and the
+firewall never sees the request.
 
 In both modes a cached variant is served without consulting the source, so deleting a source file does not remove its
 variants: call `deleteBySource()` or `image:purge <src> --force` when a source is deleted (see
@@ -466,7 +466,7 @@ id_sign_image:
 
 ### Custom route prefix
 
-Set `route_prefix`; nothing else needs to change:
+Set `route_prefix` — the route and the default cache directory follow it:
 
 ```yaml
 id_sign_image:
@@ -879,7 +879,19 @@ gave `[avif, webp, webp]`), so a file that relied on appending must list every v
 Other values that used to pass and break at runtime now fail the container build too: a `default_watermark` that
 names no profile in `watermarks` (every image URL answered 400), a watermark profile name with characters other than
 letters, digits, `_` and `-`, a relative watermark `path`, a watermark `size` outside 1-100 or a negative `margin`,
-`blur.size` below 1, a negative `cache.ttl` and a `route_prefix` without a leading or with a trailing `/`.
+`blur.size` outside 1-64, a negative `cache.ttl`, a relative or empty `cache.path` (under PHP-FPM it resolved against
+`public/`, so a cache meant to be private was served without the firewall), `file_permissions`/`directory_permissions`
+that do not give the owner read/write (files) or read/write/execute (directories) — `660` is decimal, write `0o660`;
+the `0660` of earlier READMEs is a string in YAML and never built — and a `route_prefix` that does not start with `/`,
+ends with one, has a `.` or `..` segment or characters other than letters, digits and `._~-`.
+
+Options set through `%env()%` build as before; their values are checked only when written literally. The exception is
+`route_prefix`: it is now the path of the bundle route and of the default cache directory, both fixed when the
+container is built, so an `%env()%` value fails the build with that explanation.
+
+A profile that is defined with a dash and partially overridden in another config file under its underscore form
+(`brand-logo` in the base file, `brand_logo` in `when@prod`) no longer merges into one profile: the override is a new
+profile, which fails the build for its missing `path`. Use the same spelling in every file.
 
 Watermark profile names are now kept verbatim. Symfony used to turn `brand-logo` into `brand_logo`, so
 `default_watermark: brand-logo` and `watermark="brand-logo"` answered 400 while `brand_logo` worked. If your templates

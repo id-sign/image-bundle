@@ -17,11 +17,11 @@ class Configuration implements ConfigurationInterface
     public const DEFAULT_SOURCE_PATH = '%kernel.project_dir%/data';
 
     /**
-     * "/…", "%param%…" or a Windows drive. A relative path would resolve against the current working directory, which
-     * differs between the web server and the console.
+     * Structure, types and the checks that hold for an %env()% value too. Ranges, paths, route_prefix and
+     * default_watermark are checked in IdSignImageExtension::validateValues(): Symfony validates an env value at build
+     * time with a dummy (0, ''), so a min(1) or a path check here fails every application that sets the option from
+     * the environment.
      */
-    private const ABSOLUTE_PATH = '#^(/|%|[A-Za-z]:[\\\\/])#';
-
     public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('id_sign_image');
@@ -32,26 +32,17 @@ class Configuration implements ConfigurationInterface
                     ->info('Breakpoints for the srcset, in pixels. A later config file replaces the list.')
                     // Appending across config files (see formats) duplicated srcset candidates.
                     ->performNoDeepMerging()
-                    ->integerPrototype()
-                        // A 0 becomes "0w", a parse error that makes browsers drop every candidate of the srcset.
-                        ->min(1)
-                    ->end()
+                    ->integerPrototype()->end()
                     ->defaultValue([320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840])
-                    ->validate()
-                        ->ifTrue(static fn (array $v): bool => \count($v) !== \count(array_unique($v)))
-                        ->thenInvalid('device_sizes must not list a breakpoint twice (got %s).')
-                    ->end()
                 ->end()
                 ->integerNode('default_quality')
                     ->defaultValue(80)
-                    ->min(1)->max(100)
+                    ->info('Output quality 1-100.')
                 ->end()
                 ->arrayNode('format_quality')
                     ->info('Output quality per format, e.g. {avif: 55, webp: 75}. Formats not listed use default_quality.')
                     ->useAttributeAsKey('format')
-                    ->integerPrototype()
-                        ->min(1)->max(100)
-                    ->end()
+                    ->integerPrototype()->end()
                     ->validate()
                         ->ifTrue(static fn (array $v): bool => [] !== array_diff(array_map('strval', array_keys($v)), FormatNegotiator::OUTPUT_FORMATS))
                         ->thenInvalid('format_quality keys must be output formats ('.implode(', ', FormatNegotiator::OUTPUT_FORMATS).') — the bundle writes "jpeg", never "jpg" (got %s).')
@@ -62,15 +53,7 @@ class Configuration implements ConfigurationInterface
                     ->useAttributeAsKey('name')
                     ->normalizeKeys(false)
                     ->defaultValue([SourcePath::DEFAULT_SOURCE => self::DEFAULT_SOURCE_PATH])
-                    ->scalarPrototype()
-                        ->cannotBeEmpty()
-                        ->validate()
-                            // Relative paths would resolve against the current working directory, which differs
-                            // between the web server and the console.
-                            ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match(self::ABSOLUTE_PATH, $v))
-                            ->thenInvalid('Source paths must be absolute, e.g. "/srv/images" or "%%kernel.project_dir%%/data" (got %s).')
-                        ->end()
-                    ->end()
+                    ->scalarPrototype()->end()
                     ->validate()
                         // Adds the default source when only named ones are configured. Validation runs on the
                         // merged value of all config files; a beforeNormalization() default would let a file
@@ -119,12 +102,11 @@ class Configuration implements ConfigurationInterface
                         ->end()
                         ->integerNode('size')
                             ->defaultValue(10)
-                            // Generated during the page render: an Imagick error here fails the whole page.
-                            ->min(1)
+                            ->info('Placeholder width in pixels, 1-64.')
                         ->end()
                         ->integerNode('quality')
                             ->defaultValue(30)
-                            ->min(1)->max(100)
+                            ->info('JPEG quality of the placeholder, 1-100.')
                         ->end()
                     ->end()
                 ->end()
@@ -141,11 +123,7 @@ class Configuration implements ConfigurationInterface
                         ->children()
                             ->scalarNode('path')
                                 ->isRequired()
-                                ->cannotBeEmpty()
-                                ->validate()
-                                    ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match(self::ABSOLUTE_PATH, $v))
-                                    ->thenInvalid('Watermark paths must be absolute, e.g. "%%kernel.project_dir%%/data/watermark.png" (got %s).')
-                                ->end()
+                                ->info('Absolute path to the watermark image.')
                             ->end()
                             ->enumNode('position')
                                 ->values(['top-left', 'top-center', 'top-right', 'center-left', 'center', 'center-right', 'bottom-left', 'bottom-center', 'bottom-right'])
@@ -157,8 +135,7 @@ class Configuration implements ConfigurationInterface
                             ->end()
                             ->integerNode('size')
                                 ->defaultValue(20)
-                                ->min(1)->max(100)
-                                ->info('Watermark width as percentage of output image width')
+                                ->info('Watermark width as percentage of output image width, 1-100')
                             ->end()
                             ->integerNode('margin')
                                 ->defaultValue(10)
@@ -182,7 +159,6 @@ class Configuration implements ConfigurationInterface
                 ->end()
                 ->integerNode('max_width')
                     ->defaultValue(4096)
-                    ->min(1)
                     ->info('Maximum accepted output width in pixels. Protects against memory exhaustion from accidentally large values.')
                 ->end()
                 ->integerNode('max_source_bytes')
@@ -197,15 +173,11 @@ class Configuration implements ConfigurationInterface
                 ->end()
                 ->variableNode('file_permissions')
                     ->defaultValue(0o660)
-                    ->validate()
-                        ->ifTrue(static fn ($v): bool => null !== $v && !\is_int($v))
-                        ->thenInvalid('file_permissions must be an integer (e.g. 0o660) or null.')
-                    ->end()
-                    ->info('Permissions for created cache files (e.g. 0660). Null = use umask default.')
+                    ->info('Permissions for created cache files, e.g. 0o660 (YAML reads 0660 as a string). Null = umask default.')
                 ->end()
                 ->integerNode('directory_permissions')
                     ->defaultValue(0o770)
-                    ->info('Permissions for created cache directories (e.g. 0770).')
+                    ->info('Permissions for created cache directories, e.g. 0o770 (YAML reads 0770 as a string).')
                 ->end()
                 ->enumNode('serve_mode')
                     ->values(['controller', 'public'])
@@ -213,23 +185,8 @@ class Configuration implements ConfigurationInterface
                 ->end()
                 ->scalarNode('route_prefix')
                     ->defaultValue('/_image')
-                    ->validate()
-                        // Prepended to every image URL: without the leading slash URLs are relative to the page,
-                        // a trailing one yields "/_image//…", which nginx merges and the route no longer matches.
-                        ->ifTrue(static fn ($v): bool => !\is_string($v) || 1 !== preg_match('#^(/[A-Za-z0-9._~-]+)+$#D', $v))
-                        ->thenInvalid('route_prefix must start with "/" and must not end with one, e.g. "/_image" or "/media/images" (got %s).')
-                    ->end()
+                    ->info('URL prefix of every image URL, the path of the bundle route and (by default) of the cache directory.')
                 ->end()
-            ->end()
-            ->validate()
-                // A typo or a profile that does not exist would put an unknown _wm-{name} into every image URL: 400.
-                ->always(static function (array $v): array {
-                    if (null !== $v['default_watermark'] && !isset($v['watermarks'][$v['default_watermark']])) {
-                        throw new \InvalidArgumentException(\sprintf('default_watermark "%s" is not a configured watermark profile (configured: %s).', $v['default_watermark'], [] === $v['watermarks'] ? 'none' : implode(', ', array_keys($v['watermarks']))));
-                    }
-
-                    return $v;
-                })
             ->end()
         ;
 
