@@ -392,7 +392,7 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 ## Upgrading from v0.4.0 or earlier
 
-See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a `height` below 1 throws like an unknown `fit`;
+See "From v0.4.0 or earlier" in the bundle's UPGRADE.md. In short: a `height` below 1 throws like an unknown `fit`;
 purge deletes only files the bundle wrote — SVG copies from earlier versions (no marker) and `….jpg` variants from up to
 0.3 stay and must be deleted by hand; a `fit` other than `cover`/`contain`/ `scale-down` throws (it used to render URLs
 answering 400); a signed URL with a leading zero in a number (`_0800_`) no longer verifies (it used to yield unlimited
@@ -412,7 +412,7 @@ registered as `brand_logo` before. The route path now comes from `route_prefix`:
 
 ## Upgrading from v0.3.0 or earlier
 
-See "Upgrading from v0.3.0 or earlier" in the bundle README. In short: a leading `@` in `src` now selects a named source
+See "From v0.3.0 or earlier" in the bundle's UPGRADE.md. In short: a leading `@` in `src` now selects a named source
 (rename a `data/@dir` directory or register it as a source of that name), default `device_sizes` gained `320` and `480`
 (a one-off wave of new variants), oversized sources answer `413` instead of a server error, and `*.lock` files left by
 older versions are unused — the next `image:purge --force` removes them. The controller serves only the configured
