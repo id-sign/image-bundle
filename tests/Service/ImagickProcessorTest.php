@@ -224,6 +224,37 @@ class ImagickProcessorTest extends TestCase
     }
 
     /**
+     * size × output width below 50 rounded the watermark width to 0, and thumbnailImage(0, 0) threw.
+     */
+    #[DataProvider('tinyWatermarks')]
+    public function testWatermarkNarrowerThanOnePixelStillRenders(int $width, int $size): void
+    {
+        $output = $this->tmpPath('png');
+
+        $this->processor->process(
+            __DIR__.'/../Fixtures/test.jpg',
+            $output,
+            $width,
+            null,
+            null,
+            'png',
+            80,
+            new WatermarkOptions(__DIR__.'/../Fixtures/watermark.png', 'bottom-right', 50, $size, 0),
+        );
+
+        self::assertSame($width, (new \Imagick($output))->getImageWidth());
+    }
+
+    /**
+     * @return iterable<string, array{int, int}>
+     */
+    public static function tinyWatermarks(): iterable
+    {
+        yield '2 % of 24 px' => [24, 2];
+        yield '20 % of 2 px' => [2, 20];
+    }
+
+    /**
      * adobergb-r03.jpg has no profile but EXIF InteropIndex=R03 (a DCF camera in Adobe RGB mode): the variant must
      * carry the sRGB values rgb(0,200,67) for the stored rgb(100,199,80). The tag is read before the fit, because
      * thumbnailImage() drops the EXIF block.
