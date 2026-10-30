@@ -127,6 +127,22 @@ class CachePathResolverTest extends TestCase
         self::assertNull($this->resolver->parse(''));
     }
 
+    /**
+     * The signature covers the parsed integers, not the digits: "_0800_" verified like "_800_" and was cached as
+     * another file, so one public URL could produce any number of variants.
+     */
+    public function testParseRejectsLeadingZeros(): void
+    {
+        $path = $this->resolver->resolve('test.jpg', 800, 600, 'cover', 80, 'webp');
+        self::assertNotNull($this->resolver->parse($path));
+
+        foreach (['_800_' => '_0800_', '_600_' => '_0600_', '_80.' => '_080.'] as $canonical => $padded) {
+            $tampered = str_replace($canonical, $padded, $path);
+            self::assertNotSame($path, $tampered);
+            self::assertNull($this->resolver->parse($tampered), $padded);
+        }
+    }
+
     public function testParseRejectsTrailingNewline(): void
     {
         $path = $this->resolver->resolve('test.jpg', 64, null, null, 80, 'webp');

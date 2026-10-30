@@ -128,6 +128,18 @@ class ImageControllerTest extends TestCase
         self::assertSame([], glob($this->cacheDir.'/test.jpg/*') ?: []);
     }
 
+    public function testSignedUrlWithLeadingZeroReturns400(): void
+    {
+        // The signature covers the parsed integers: "_064_" verified like "_64_" and was cached as a separate file.
+        $path = $this->cachePathResolver->resolve('test.jpg', 64, null, null, 80, 'webp');
+        $padded = str_replace('_64_', '_064_', $path);
+
+        $response = ($this->controller)(Request::create('/_image/'.$padded), $padded);
+
+        self::assertSame(400, $response->getStatusCode());
+        self::assertSame([], glob($this->cacheDir.'/test.jpg/*') ?: []);
+    }
+
     public function testInvalidSignatureReturns403(): void
     {
         $path = 'test.jpg/aa00bb11cc22dd33_64_48_none_80.jpeg';

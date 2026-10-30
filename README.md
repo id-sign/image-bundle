@@ -843,6 +843,11 @@ php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 
 ### Upgrading from v0.4.0 or earlier
 
+Security: a number with a leading zero in a signed URL (`_0800_` for `_800_`) verified like the original and was
+encoded and cached as another file, so a single public image URL could fill the disk. Such URLs — the bundle never
+generates them — now answer 400, as does a width, height or quality of `0`, which earlier versions put into a URL when
+`0` was passed. Variants already created that way stay on disk until the next `image:purge`.
+
 `ImageUrlGenerator::generate()` and `generateFromRequest()` without a `quality` argument used a hard-coded `80`; they
 now use the configured quality of the format (`format_quality`, then `default_quality`), like `<twig:Image>` and
 `image_url()`. With `default_quality: 80` and no `format_quality` nothing changes; otherwise those URLs change once.
