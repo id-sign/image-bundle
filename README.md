@@ -51,6 +51,12 @@ id_sign_image:
     # Default output quality (1-100)
     default_quality: 80
 
+    # Output quality per format (1-100) for the formats listed; the others use default_quality.
+    # Keys: avif, webp, jpeg, png ("jpeg", never "jpg"). Default: none.
+    format_quality:
+        avif: 55
+        webp: 75
+
     # Named image sources (name => absolute base path), referenced as "@name/path" in src.
     # Paths without a prefix use "default"; when omitted, default is %kernel.project_dir%/data.
     sources:
@@ -174,7 +180,11 @@ only (`auto` in the URL) and keeps the source aspect ratio — see [`height`](#h
 ### Custom quality
 
 ```twig
+{# One quality for every format #}
 <twig:Image src="uploads/avatar.jpg" width="64" height="64" quality="90" alt="Avatar" class="rounded-full" />
+
+{# Per format — formats not named keep format_quality / default_quality #}
+<twig:Image src="uploads/hero.jpg" width="1920" :quality="{avif: 70, webp: 90}" alt="Hero" />
 ```
 
 ### SVG passthrough
@@ -220,7 +230,7 @@ Pixelmator, Affinity; iPhone HEIC embeds a profile and is converted).
 | `height`         | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled)                |
 | `fit`            | string        | no       | Resize mode: `cover`, `contain`, or `scale-down`                             |
 | `blur`           | bool          | no       | Show blur placeholder (overrides global setting)                             |
-| `quality`        | int           | no       | Output quality (overrides `default_quality`)                                 |
+| `quality`        | int\|map      | no       | Output quality 1-100, or a `{format: quality}` map (see [`quality`](#quality)) |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global `auto_dimensions`) |
 | `watermark`      | string\|false | no       | Watermark profile name, `false` to disable, omit for global default          |
 | `lossless`       | bool          | no       | Use lossless encoding (WebP/AVIF only, overrides global config)              |
@@ -328,8 +338,25 @@ Can be set globally via `blur.enabled` in bundle configuration. The component at
 
 ### `quality`
 
-Output compression quality (1-100). Overrides the global `default_quality` setting. Lower values produce smaller files
-with more compression artifacts. Typical values: 60-80 for photos, 80-90 for detailed images.
+Output compression quality (1-100). Lower values produce smaller files with more compression artifacts. Typical values:
+60-80 for photos, 80-90 for detailed images.
+
+The formats do not compress alike — AVIF reaches the look of a WebP or JPEG at a clearly lower value — so the quality
+can be set per format. Each `<source>` and the `<img>` fallback get the first of:
+
+1. the `quality` attribute — an int applies to every format, a map such as `:quality="{avif: 70, webp: 90}"` only to
+   the formats it names;
+2. `format_quality` from the configuration;
+3. `default_quality`.
+
+Map keys are output formats: `avif`, `webp`, `jpeg`, `png` (for PNG the value sets the zlib level and filter, not a
+visual quality). A value outside 1-100 or an unknown key throws an `InvalidArgumentException`; in the configuration it
+fails the container build. Tune the values by eye on your own images — the right AVIF value depends on the encoder
+build.
+
+The quality is part of the URL and of the cache path, so changing `format_quality` or `default_quality` changes the URLs
+of the affected formats: the new variants are generated on first request, the old ones stay on disk until
+`image:purge`.
 
 ### `watermark`
 
@@ -566,6 +593,12 @@ fallback of `<twig:Image>`:
 | `webp`                                            | `webp`          |
 | `avif`                                            | `avif`          |
 | `gif`, `tiff`, `tif`, `heic`, `heif`, `bmp`, other | `jpeg`          |
+
+When the formats carry different qualities (`format_quality` or a `quality` map), each signed quality can still be
+requested in every offered format — the `…_55.avif` URL also yields `…_55.webp` and `…_55.jpeg`. A width then has at
+most one variant per offered format and distinct quality (9 instead of 3 with `avif`, `webp` and a JPEG fallback),
+which bounds what an attacker can generate from the URLs on your pages. This is an accepted trade-off that keeps a
+single, format-free signature scheme for every URL.
 
 SVG URLs are **not** signed — SVG has no parameter variations, so HMAC would add no protection against cache
 exhaustion. See [Security model](#security-model) below for the implications.
@@ -805,6 +838,21 @@ php bin/console image:purge --accessed-before=14 --force
 php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 ```
 
+### Upgrading from v0.4.0 or earlier
+
+`ImageUrlGenerator::generate()` and `generateFromRequest()` without a `quality` argument used a hard-coded `80`; they
+now use the configured quality of the format (`format_quality`, then `default_quality`), like `<twig:Image>` and
+`image_url()`. With `default_quality: 80` and no `format_quality` nothing changes; otherwise those URLs change once.
+
+`default_quality` and `blur.quality` must be 1-100 — a value outside fails the container build — and a `quality`
+outside 1-100 passed to the component, `image_url()` or `ImageUrlGenerator` throws an `InvalidArgumentException`
+instead of producing a URL.
+
+`ImageComponent` and `ImageUrlExtension` take a `QualityResolver` in place of `int $defaultQuality`, and
+`ImageUrlGenerator` takes one after the `FormatNegotiator`. This matters only if you construct them yourself or
+override their service definitions: a definition that binds `$defaultQuality` no longer compiles — drop the binding
+and set `default_quality` / `format_quality` in the bundle configuration instead.
+
 ### Upgrading from v0.3.0 or earlier
 
 A leading `@` in `src` now selects a named source. A file of the default source whose first path segment starts with
@@ -920,8 +968,10 @@ class ImageApiController
 Both methods follow the rules of `<twig:Image>`: `width` must be between 1 and `max_width` (an
 `InvalidArgumentException` otherwise — the controller trusts the signature, so the cap sits where URLs are made),
 `height` is a processing dimension only together with `fit` (without `fit` the server resizes by `width` and keeps the
-aspect ratio), and a `format` the controller would not serve throws. Unlike the component, `scale-down` keeps the
-requested `width` instead of the source dimensions, so the URL can be a separate cache variant.
+aspect ratio), and a `format` the controller would not serve throws. `quality` takes an int or a `{format: quality}`
+map like the component attribute; omitted, it is the configured quality of the resulting format (`format_quality`,
+then `default_quality`), resolved after negotiation. Unlike the component, `scale-down` keeps the requested `width`
+instead of the source dimensions, so the URL can be a separate cache variant.
 
 ### Twig function `image_url()`
 
@@ -966,7 +1016,7 @@ check the result in the Facebook Sharing Debugger and the LinkedIn Post Inspecto
 | `width`          | int           | yes      | Output width in pixels                                            |
 | `height`         | int           | no       | Processing height, used only together with `fit` (auto-calculated if `autoDimensions` enabled) |
 | `fit`            | string        | no       | `cover`, `contain`, or `scale-down`                               |
-| `quality`        | int           | no       | Output quality 1-100 (default from config)                        |
+| `quality`        | int\|map      | no       | Output quality 1-100, or a `{format: quality}` map applied to the negotiated or given format; omitted: `format_quality`, then `default_quality` |
 | `format`         | string        | no       | A configured format or the source's fallback (`jpeg`, `png`, …), else throws. Omitted: negotiated from the request, `webp` without one |
 | `watermark`      | string\|false | no       | Profile name, `false` to disable, omit for global default         |
 | `autoDimensions` | bool          | no       | Auto-calculate height from aspect ratio (overrides global config) |

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace IdSign\ImageBundle\Tests\Cache;
 
 use IdSign\ImageBundle\Cache\CachePathResolver;
+use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\UrlSigner;
 use PHPUnit\Framework\TestCase;
 
@@ -143,6 +144,23 @@ class CachePathResolverTest extends TestCase
         self::assertIsString($tampered);
 
         self::assertNull($this->resolver->parse($tampered));
+    }
+
+    /**
+     * FormatNegotiator::OUTPUT_FORMATS (format_quality keys, quality map keys) must list exactly the extensions the
+     * parse pattern accepts, and each needs a real MIME type.
+     */
+    public function testParseAcceptsExactlyTheOutputFormats(): void
+    {
+        foreach (['avif', 'webp', 'jpeg', 'png', 'jpg', 'gif', 'heic', 'tiff', 'bmp', 'svg'] as $format) {
+            $parsed = $this->resolver->parse($this->resolver->resolve('photo.jpg', 800, null, null, 80, $format));
+
+            self::assertSame(\in_array($format, FormatNegotiator::OUTPUT_FORMATS, true), null !== $parsed, $format);
+        }
+
+        foreach (FormatNegotiator::OUTPUT_FORMATS as $format) {
+            self::assertNotSame('application/octet-stream', FormatNegotiator::getMimeType($format), $format);
+        }
     }
 
     public function testParseRejectsUppercaseFormat(): void

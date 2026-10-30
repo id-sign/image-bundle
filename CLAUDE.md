@@ -24,6 +24,8 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 - `friendsofphp/php-cs-fixer`
 - `phpstan/phpstan` + `phpstan/phpstan-symfony` (level 9)
 - `phpunit/phpunit`
+- `symfony/property-access` (the component test writes props the way ux-twig-component does — `quality="90"` must
+  coerce into `int|array|null`)
 
 ## Architecture
 
@@ -48,6 +50,7 @@ src/
 │   ├── SrcsetGenerator.php
 │   ├── BlurPlaceholderGenerator.php
 │   ├── ImageMetadataReader.php
+│   ├── QualityResolver.php
 │   ├── SourceSizeValidator.php
 │   ├── SourceTooLargeException.php
 │   ├── UrlSigner.php
@@ -112,9 +115,47 @@ HMAC overhead per image lifecycle:
 
 The payload has no format, so `UrlSigner` memoizes signatures per payload for one request (`ResetInterface`, cleared
 between requests in worker mode): one HMAC covers every `<source>` and the fallback of a width — 8 instead of 17 per
-image at `width=1920` with the default breakpoints. `CachePathResolver::encodeForUrl()` is a single `rawurlencode()`
-pass with `%2F` restored to `/`. Measured on the component: 57.7 → 46.7 μs per raster image, 53.8 → 2.6 μs per SVG
-(see the SVG note under Twig component).
+image at `width=1920` with the default breakpoints. With per-format quality (see Quality per format) it is one HMAC per
+width and distinct quality — up to 17 again, only for applications that set different qualities. Measured on the
+component at `width=1920`: 47.1 → 53.0 μs per raster image with three distinct qualities (avif, webp, JPEG fallback);
+with one quality the resolver costs nothing measurable (46.5 μs before the feature).
+`CachePathResolver::encodeForUrl()` is a single `rawurlencode()` pass with `%2F` restored to `/`. Measured on the
+component: 57.7 → 46.7 μs per raster image, 53.8 → 2.6 μs per SVG (see the SVG note under Twig component).
+
+#### Quality per format
+
+The formats do not compress alike (AVIF looks like a WebP/JPEG at a clearly lower value), so `format_quality:
+{format: 1…100}` sets the quality per output format and `default_quality` covers the rest. `QualityResolver` is the one
+place that decides: `resolve($format, $quality)` returns the per-image value when it is an int, else the map entry for
+that format, else `format_quality[$format]`, else `default_quality`. A per-image map therefore overrides only the
+formats it names — an int still flattens every format, as before. The component resolves per `<source>` and for the
+fallback;
+`image_url()` passes `quality` through untouched and `ImageUrlGenerator::generate()` resolves it after the format is
+known (negotiated, explicit or the CLI default), which also retired the generator's hard-coded `$quality = 80` that
+ignored `default_quality`.
+
+`QualityResolver::assertValid()` runs at the entry points — `ImageComponent::postMount()`, `image_url()` (before its
+metadata I/O) and `ImageUrlGenerator::generate()` (for direct PHP callers) — before the SVG early return, so the prop
+contract is uniform like `width`: an int outside 1…100, a map value that is not such an int, or a key outside
+`FormatNegotiator::OUTPUT_FORMATS` (`jpg` included, the bundle writes `jpeg`) throws. A typo in a map key would
+otherwise fall back silently. A valid key for a format this source never gets (`png` on a JPEG, `avif` without it in
+`formats`) is ignored on purpose: one map can serve every image of a template, like `format_quality` serves every
+source. `resolve()` trusts its input (it runs per format; `assertValid()` once per image). `Configuration` enforces
+the same range on `default_quality`, `format_quality` and `blur.quality` (`format_quality` keys merge across config
+files, a `when@prod` block can tune one format). Before `format_quality` there was no range check at all: `quality=0`
+reached Imagick. `CachePathResolverTest` pins `OUTPUT_FORMATS` to the extensions `parse()` accepts.
+
+Security trade-off, decided together with `format_quality`: the HMAC payload still has no format. With different
+qualities per format, a signed `…_55.avif` can also be requested as `.webp`/`.jpeg` (`isOffered()` passes), so a width
+has up to one variant per offered format × distinct quality — 9 instead of 3 with avif, webp and a JPEG fallback (each
+extra PNG variant of a PNG source 20–30 MB at 3840 px). Bounded, and only when qualities differ. Two ways to close it
+were weighed. Signing the format always changes every URL (after `image:purge` the URLs in sent e-mails and
+share-image caches answer 403) and drops the per-width memo for everyone. Signing it only for images with per-format
+quality — the controller verifying the format-free payload first, then the format-bound one — would keep every
+existing URL and restore the 3-variant bound (lossless included: AVIF lossless forces q100, so cross-format quality
+variants are byte-identical encodes), at the price of a second scheme in `UrlSigner`/controller and a URL change for
+every format, tuned or not, when `format_quality` is switched on. Declined by the maintainer for now; it is the
+preferred route if the bound ever needs closing.
 
 #### Path-based URLs
 
@@ -358,8 +399,9 @@ watermark profiles = different cached files.
 
 `ImageComponent` is a `symfony/ux-twig-component` class component with `#[AsTwigComponent]`.
 
-**Props:** `src`, `width`, `height` (optional), `fit` (optional), `blur` (optional bool), `quality` (optional int),
-`autoDimensions` (optional bool|null), `watermark` (optional string|false|null)
+**Props:** `src`, `width`, `height` (optional), `fit` (optional), `blur` (optional bool), `quality` (optional
+int|map format => int, see Quality per format), `autoDimensions` (optional bool|null), `watermark` (optional
+string|false|null), `lossless` (optional bool|null)
 
 **Width is required and must be > 0** — enforced via `InvalidArgumentException` in `postMount()`. Applies to SVG too
 (uniform prop contract). Rationale: `width=0` produces `srcset="… 0w"`, which is a parse error per HTML spec (`w`
@@ -450,6 +492,7 @@ both `ImageComponent` and `ImageUrlExtension` to avoid duplication.
 
 Used for API responses, emails, or any context outside Twig templates. Unlike `<twig:Image>` and `image_url()`, it
 does not replace a `scale-down` width/height with the source dimensions, so its URL can be a separate cache variant.
+`quality` (int, map or null) is resolved through `QualityResolver` once the format is fixed.
 It shares their other rules: `width` must be 1…`max_width` (the controller trusts the signature, so the cap has to sit
 where URLs are made — the generator has its own `$maxWidth` argument, bound in `services.yaml`), and `height` is a
 processing dimension only together with `fit` — a signed `_800_600_none_` would reach `fitExact()` and distort the
@@ -481,7 +524,8 @@ component props.
   always served; the literal `webp` of 0.3 answered 404 with `formats: ['avif']`
 
 **Watermark/quality/autoDimensions resolution** follows the same logic as `ImageComponent` — global defaults from
-config, overridable per call.
+config, overridable per call. `quality` is handed to the generator unresolved, because the format may only be known
+after negotiation there.
 
 ### Srcset generation
 
@@ -566,12 +610,14 @@ the sole author.
 
 ### PHPUnit
 
-- Unit tests: `UrlSigner`, `FormatNegotiator`, `CachePathResolver`, `SourceSizeValidator`, `ColorProfile`,
-  `ExifInteroperability`, `LocalFilesystemSource`,
+- Unit tests: `UrlSigner`, `FormatNegotiator`, `QualityResolver`, `CachePathResolver`, `SourceSizeValidator`,
+  `ColorProfile`, `ExifInteroperability`, `LocalFilesystemSource`,
   `NamedImageSource`,
-  `SourcePath`, `IdSignImageExtension` (`sources` config, tagged registration, compiled-container wiring — needs
-  `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`, `ImageComponent`,
-  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough),
+  `SourcePath`, `IdSignImageExtension` (`sources` and `format_quality` config, tagged registration, compiled-container
+  wiring — needs `symfony/yaml`), `PurgeCacheCommand`, `LocalFilesystemCacheStorage`, `SrcsetGenerator`,
+  `ImageComponent` (per-format quality, map prop),
+  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
+  resolved per negotiated format),
   `ImagickProcessor`
   (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width),
   `ImageMetadataReader` (scale-down fit, EXIF orientation), `BlurPlaceholderGenerator` (EXIF orientation) —
@@ -598,6 +644,9 @@ the sole author.
 id_sign_image:
     device_sizes: [ 320, 480, 640, 750, 828, 1080, 1200, 1920, 2048, 3840 ]
     default_quality: 80
+    format_quality:                 # format => 1-100, formats not listed use default_quality
+        avif: 55
+        webp: 75
     sources:                        # name => absolute path; "@name/path" in src, no prefix = default
         default: '%kernel.project_dir%/data'
         reference: '%kernel.project_dir%/assets/reference'

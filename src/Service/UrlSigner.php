@@ -22,8 +22,9 @@ class UrlSigner implements ResetInterface
     {
         $payload = $this->buildPayload($src, $width, $height, $fit, $quality, $watermark, $lossless);
 
-        // The payload carries no format, so one HMAC covers every <source> and the fallback of a width.
-        // The memo lives for one request; reset() clears it between requests in worker mode.
+        // The payload carries no format, so one HMAC covers every <source> and the fallback of a width that share
+        // a quality (format_quality makes it one per distinct quality). The memo lives for one request; reset()
+        // clears it between requests in worker mode.
         return $this->signatures[$payload] ??= substr(hash_hmac('sha256', $payload, $this->derivedKey), 0, 16);
     }
 

@@ -59,6 +59,11 @@ services:
 
     IdSign\ImageBundle\Service\ImageMetadataReader: ~
 
+    IdSign\ImageBundle\Service\QualityResolver:
+        arguments:
+            $defaultQuality: '%id_sign_image.default_quality%'
+            $formatQuality: '%id_sign_image.format_quality%'
+
     IdSign\ImageBundle\Service\SrcsetGenerator:
         arguments:
             $deviceSizes: '%id_sign_image.device_sizes%'
@@ -80,7 +85,6 @@ services:
     # Twig Component
     IdSign\ImageBundle\Twig\Component\ImageComponent:
         arguments:
-            $defaultQuality: '%id_sign_image.default_quality%'
             $formats: '%id_sign_image.formats%'
             $routePrefix: '%id_sign_image.route_prefix%'
             $blurEnabled: '%id_sign_image.blur.enabled%'
@@ -92,7 +96,6 @@ services:
     # Twig Extension
     IdSign\ImageBundle\Twig\ImageUrlExtension:
         arguments:
-            $defaultQuality: '%id_sign_image.default_quality%'
             $defaultWatermark: '%id_sign_image.default_watermark%'
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
             $maxWidth: '%id_sign_image.max_width%'

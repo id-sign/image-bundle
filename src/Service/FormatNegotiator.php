@@ -8,6 +8,9 @@ use Symfony\Component\HttpFoundation\Request;
 
 class FormatNegotiator
 {
+    /** The variant extensions CachePathResolver::parse() accepts. */
+    public const OUTPUT_FORMATS = ['avif', 'webp', 'jpeg', 'png'];
+
     private const MIME_MAP = [
         'avif' => 'image/avif',
         'webp' => 'image/webp',
@@ -55,7 +58,10 @@ class FormatNegotiator
      * Whether the application would generate this format for this source: one of the configured formats, or the
      * source's fallback. The signature does not cover the format (one HMAC serves every <source> of a width), so
      * without this check a single signed URL would yield a variant per accepted extension — and PNG is lossless,
-     * a 3840 px photo as PNG is 20–30 MB on disk plus the encode.
+     * a 3840 px photo as PNG is 20–30 MB on disk plus the encode. With format_quality the formats of a width carry
+     * different qualities, and each signed quality is still reachable in every offered format: up to one variant per
+     * offered format and distinct quality instead of one per format — bounded, accepted to keep the signature (and
+     * every URL already out there) format-free.
      */
     public function isOffered(string $format, string $src): bool
     {

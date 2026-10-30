@@ -7,6 +7,7 @@ namespace IdSign\ImageBundle\Tests\Service;
 use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\FormatNegotiator;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
+use IdSign\ImageBundle\Service\QualityResolver;
 use IdSign\ImageBundle\Service\UrlSigner;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request;
@@ -21,7 +22,7 @@ class ImageUrlGeneratorTest extends TestCase
         $resolver = new CachePathResolver($signer);
         $negotiator = new FormatNegotiator(['avif', 'webp']);
 
-        $this->generator = new ImageUrlGenerator($resolver, $negotiator, '/_image', 4096);
+        $this->generator = new ImageUrlGenerator($resolver, $negotiator, new QualityResolver(80), '/_image', 4096);
     }
 
     public function testGenerateReturnsUrlWithPrefix(): void
@@ -112,7 +113,7 @@ class ImageUrlGeneratorTest extends TestCase
     public function testWithoutFormatAndWithoutWebpConfiguredTheSourceFallbackIsUsed(): void
     {
         // A literal 'webp' default would produce URLs the controller answers with 404.
-        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), '/_image', 4096);
+        $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), new QualityResolver(80), '/_image', 4096);
 
         self::assertStringEndsWith('.jpeg', $generator->generate('uploads/photo.jpg', 800));
         self::assertStringEndsWith('.png', $generator->generate('icons/logo.png', 800));
@@ -175,5 +176,37 @@ class ImageUrlGeneratorTest extends TestCase
 
         self::assertStringStartsWith('/_image/%40reference/uploads/photo.jpg/', $url);
         self::assertNotSame($this->generator->generate('uploads/photo.jpg', 800, null, null, 80, 'webp'), $url);
+    }
+
+    public function testWithoutQualityTheConfiguredQualityOfTheFormatIsUsed(): void
+    {
+        $generator = $this->createGenerator(new QualityResolver(70, ['avif' => 50]));
+
+        self::assertStringEndsWith('_50.avif', $generator->generate('photo.jpg', 800, format: 'avif'));
+        self::assertStringEndsWith('_70.webp', $generator->generate('photo.jpg', 800, format: 'webp'), 'default_quality, not a hard-coded 80');
+    }
+
+    public function testQualityIsResolvedForTheNegotiatedFormat(): void
+    {
+        $generator = $this->createGenerator(new QualityResolver(80, ['avif' => 50, 'webp' => 70]));
+        $avif = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'image/avif,image/webp']);
+        $webp = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'image/webp']);
+
+        self::assertStringEndsWith('_50.avif', $generator->generateFromRequest($avif, 'photo.jpg', 800));
+        self::assertStringEndsWith('_90.webp', $generator->generateFromRequest($webp, 'photo.jpg', 800, quality: ['webp' => 90]));
+        self::assertStringEndsWith('_50.avif', $generator->generateFromRequest($avif, 'photo.jpg', 800, quality: ['webp' => 90]));
+    }
+
+    public function testInvalidQualityIsRefusedEvenForSvg(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('got 0');
+
+        $this->generator->generate('icons/logo.svg', 800, quality: 0);
+    }
+
+    private function createGenerator(QualityResolver $qualityResolver): ImageUrlGenerator
+    {
+        return new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif', 'webp']), $qualityResolver, '/_image', 4096);
     }
 }

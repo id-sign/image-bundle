@@ -13,6 +13,7 @@ class ImageUrlGenerator
     public function __construct(
         private readonly CachePathResolver $cachePathResolver,
         private readonly FormatNegotiator $formatNegotiator,
+        private readonly QualityResolver $qualityResolver,
         private readonly string $routePrefix,
         private readonly int $maxWidth,
     ) {
@@ -29,16 +30,21 @@ class ImageUrlGenerator
      * The other rules are the component's: $width must be 1…max_width (the controller trusts the signature, so the
      * cap has to sit where URLs are made), and $height is a processing dimension only together with $fit — without
      * one the server resizes by width and keeps the aspect ratio, exactly like <twig:Image> and image_url().
+     * $quality is resolved like the component's prop: an int for any format, a map for the formats it names, and
+     * format_quality / default_quality for the rest — so it is resolved after the format.
      *
-     * @throws \InvalidArgumentException when $width is not within 1…max_width, or $format is one the controller
-     *                                   would not serve for this source
+     * @param int|array<string, int>|null $quality
+     *
+     * @throws \InvalidArgumentException when $width is not within 1…max_width, $quality is not 1…100 or a map of
+     *                                   output format => 1…100, or $format is one the controller would not serve for
+     *                                   this source
      */
     public function generate(
         string $src,
         int $width,
         ?int $height = null,
         ?string $fit = null,
-        int $quality = 80,
+        int|array|null $quality = null,
         ?string $format = null,
         ?string $watermark = null,
         bool $lossless = false,
@@ -52,6 +58,8 @@ class ImageUrlGenerator
         if ($width > $this->maxWidth) {
             throw new \InvalidArgumentException(\sprintf('ImageUrlGenerator width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $width, $src, $this->maxWidth));
         }
+
+        $this->qualityResolver->assertValid($quality, $src);
 
         // Like <twig:Image>: an SVG is served as-is, there is no variant to sign. A signed raster URL would make the
         // controller rasterize an untrusted SVG, and its variants directory would collide with the passthrough file.
@@ -69,11 +77,13 @@ class ImageUrlGenerator
         // the processor resize to exactly that box and distort the image.
         $processingHeight = null !== $fit ? $height : null;
 
-        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $processingHeight, $fit, $quality, $format, $watermark, $lossless));
+        return $this->routePrefix.'/'.CachePathResolver::encodeForUrl($this->cachePathResolver->resolve($src, $width, $processingHeight, $fit, $this->qualityResolver->resolve($format, $quality), $format, $watermark, $lossless));
     }
 
     /**
      * Generate an optimized image URL, negotiating format from the Request Accept header.
+     *
+     * @param int|array<string, int>|null $quality
      */
     public function generateFromRequest(
         Request $request,
@@ -81,7 +91,7 @@ class ImageUrlGenerator
         int $width,
         ?int $height = null,
         ?string $fit = null,
-        int $quality = 80,
+        int|array|null $quality = null,
         ?string $watermark = null,
         bool $lossless = false,
     ): string {
