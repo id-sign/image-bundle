@@ -207,12 +207,18 @@ Deletion — `deleteBySource()`, `purgeAll()` and `image:purge` (count, `--force
 emptied. The default `cache.path` is the document root + `route_prefix`, so `route_prefix: /images` makes it
 `public/images`, which may hold the application's own files; up to the release that introduced the derived default,
 purge deleted everything below the cache directory. Owned: variant names (a looser pattern than `parse()`, so stray
-leading-zero variants are purgeable), `meta.json`/`blur.txt` in a directory whose name has a dot (a variants directory
-carries the source file name), staging files `.{16 hex}.tmp`, and SVG copies — which have the name of any static SVG,
-so `serveSvg()` writes an empty marker `.{name}.id-sign-image` next to the copy, before the copy (a copy without marker
-would never be purged, a stray marker is). A marker is deleted together with its SVG, never on its own while the SVG
-exists, and not counted.
-SVG copies from earlier versions have no marker and stay; the upgrade notes say to delete them by hand.
+leading-zero variants are purgeable), `meta.json`/`blur.txt` by content (`{"width":N,"height":N}` /
+`data:image/jpeg;base64,…`, read on purge only — a rule by directory name missed sources without an extension such as
+`avatars/42/` and deleted an application's `v1.2/meta.json`), staging files `.{16 hex}.tmp`, and SVG copies — which
+have the name of any static SVG, so `serveSvg()` writes an empty marker `.{name}.svg.id-sign-image` next to the copy,
+before the copy (a copy without marker would never be purged, a stray marker is) and again after it (a concurrent
+purge may have taken it in between; a no-op otherwise). A marker is deleted together with its SVG, never on its own
+while the SVG exists (`deleteBySource()` on the marker returns 0), and not counted. Directories: `deleteContents()`
+removes those it deleted something from, `deleteBySource()` the given directory only then, the age purge the emptied
+variants directories and their parents up to the cache root — an application's empty directory stays.
+SVG copies from earlier versions have no marker, and `….jpg` variant names from up to 0.3 do not match: both stay,
+the upgrade notes say to delete them by hand. A cache directory that is also a source directory cannot work at all
+(variants directory `photo.jpg/` vs source file `photo.jpg`); README warns under Custom route prefix.
 
 #### Image source abstraction
 

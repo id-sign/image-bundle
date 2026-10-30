@@ -483,7 +483,10 @@ plus `route_prefix`. The web server snippets, `access_control` rules and nginx l
 
 Prefer a prefix no other file lives under. `image:purge` deletes only what the bundle wrote (see
 [Cache management](#cache-management)), so files of your own in that directory survive a purge, but a URL whose path
-exists as a static file is answered by the web server before the bundle sees it.
+exists as a static file is answered by the web server before the bundle sees it. The cache directory must never be a
+source directory as well (`route_prefix: /images` with `sources.default: '%kernel.project_dir%/public/images'`): the
+variants directory `photo.jpg/` cannot be created where the source file `photo.jpg` lives, and every image answers
+500.
 
 ### Restricting access to authenticated users
 
@@ -810,11 +813,12 @@ named sources — your implementation then receives the raw `@name/…` string.
 
 By default, all commands run in dry-run mode (showing what would be deleted). Add `--force` to actually delete files.
 
-`image:purge` and `CacheStorageInterface::deleteBySource()` delete only files the bundle wrote — variants, `meta.json`,
-`blur.txt`, leftover `.*.tmp` staging files and SVG copies — and leave anything else in the cache directory alone, so
-the directory may be shared with the application's own files (the default `cache.path` follows `route_prefix`). An SVG
-copy has the name of any static SVG, so the bundle writes an empty hidden marker next to it
-(`.logo.svg.id-sign-image`); an SVG without that marker is never deleted.
+`image:purge` and `CacheStorageInterface::deleteBySource()` delete only files the bundle wrote — variants, `meta.json`
+and `blur.txt` (recognised by their content, not their place), leftover `.*.tmp` staging files and SVG copies — and
+remove only directories they emptied, so the directory may be shared with the application's own files (the default
+`cache.path` follows `route_prefix`). An SVG copy has the name of any static SVG, so the bundle writes an empty hidden
+marker next to it (`.logo.svg.id-sign-image`); an SVG without that marker is never deleted. Variants named by versions
+up to 0.3 (`….jpg`) are not recognised either and stay until deleted by hand.
 
 ### Purge all cached images
 
@@ -859,8 +863,8 @@ A `fit` other than `cover`, `contain` or `scale-down` now throws an `InvalidArgu
 the image was broken without an error anywhere.
 
 `image:purge` and `deleteBySource()` now delete only files the bundle wrote (see [Cache management](#cache-management)).
-SVG copies cached by earlier versions carry no marker and are therefore left in place: delete them once by hand — they
-are copied again from the source on the next request.
+SVG copies cached by earlier versions carry no marker, and variants named `….jpg` by versions up to 0.3 are not
+recognised: both are left in place, delete them once by hand — they are generated again on the next request.
 
 Security: a number with a leading zero in a signed URL (`_0800_` for `_800_`) verified like the original and was
 encoded and cached as another file, so a single public image URL could fill the disk. Such URLs — the bundle never
