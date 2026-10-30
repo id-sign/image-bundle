@@ -173,25 +173,23 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             return 0;
         }
 
-        // SVG: cached as a single file, no variants directory. A static SVG at the same path is left alone, and so is
-        // a marker whose SVG is still there — it goes only together with it.
+        // SVG: cached as a single file, no variants directory
         if (is_file($path)) {
-            if (!CacheFiles::isOwned($path) || (CacheFiles::isSvgMarker($path) && is_file(CacheFiles::markedSvg($path)))) {
-                return 0;
-            }
+            $this->delete($src);
 
-            self::unlinkOwned($path);
-
-            return CacheFiles::isSvgMarker($path) ? 0 : 1;
+            return 1;
         }
 
         if (!is_dir($path)) {
             return 0;
         }
 
-        // A variants directory, or a directory prefix such as "uploads" or "@reference" — the bundle's files in the
-        // whole subtree go, including the variants directories of every source image below it.
-        return $this->deleteContents($path, true);
+        // A variants directory, or a directory prefix such as "uploads" or "@reference" — the whole
+        // subtree goes, including the variants directories of every source image below it.
+        $count = $this->deleteContents($path);
+        @rmdir($path);
+
+        return $count;
     }
 
     public function purgeAll(): int
@@ -204,19 +202,14 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
     }
 
     /**
-     * Deletes the files the bundle wrote below $dir and returns their number, SVG markers not counted. Other files
-     * stay (see CacheFiles), and so do directories nothing was deleted from — $dir itself included when
-     * $includingDir, never otherwise.
+     * Deletes everything below $dir (not $dir itself) and returns the number of files removed.
      *
      * rmdir() failures are deliberately ignored: a concurrent request may have written a fresh variant
      * into a directory after its old files were unlinked, and that directory must stay.
      */
-    private function deleteContents(string $dir, bool $includingDir = false): int
+    private function deleteContents(string $dir): int
     {
-        $dir = rtrim($dir, '/');
         $count = 0;
-        /** @var array<string, true> $emptied directories a file or subdirectory was removed from */
-        $emptied = [];
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST,
@@ -224,41 +217,14 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
 
         /** @var \SplFileInfo $file */
         foreach ($iterator as $file) {
-            $path = $file->getPathname();
-
             if ($file->isFile()) {
-                // A marker goes together with its SVG — deleted first, it would leave the SVG unrecognised.
-                if (!CacheFiles::isOwned($path) || (CacheFiles::isSvgMarker($path) && is_file(CacheFiles::markedSvg($path)))) {
-                    continue;
-                }
-
-                if (!CacheFiles::isSvgMarker($path)) {
-                    ++$count;
-                }
-
-                self::unlinkOwned($path);
-                $emptied[$file->getPath()] = true;
-            } elseif ($file->isDir() && isset($emptied[$path]) && @rmdir($path)) {
-                $emptied[$file->getPath()] = true;
+                unlink($file->getPathname());
+                ++$count;
+            } elseif ($file->isDir()) {
+                @rmdir($file->getPathname());
             }
         }
 
-        if ($includingDir && isset($emptied[$dir])) {
-            @rmdir($dir);
-        }
-
         return $count;
-    }
-
-    /**
-     * Unlinks a file CacheFiles::isOwned() accepted, and the marker of an SVG copy with it.
-     */
-    private static function unlinkOwned(string $path): void
-    {
-        unlink($path);
-
-        if (str_ends_with(strtolower($path), '.svg')) {
-            @unlink(CacheFiles::svgMarker($path));
-        }
     }
 }

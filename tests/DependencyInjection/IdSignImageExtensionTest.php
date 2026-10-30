@@ -138,6 +138,38 @@ class IdSignImageExtensionTest extends TestCase
         yield 'file_permissions true' => [['file_permissions' => true], 'got bool'];
     }
 
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function cacheHoldingASource(): iterable
+    {
+        yield 'route_prefix over the default source' => [['route_prefix' => '/images', 'sources' => ['default' => '%kernel.project_dir%/public/images']]];
+        yield 'cache.path equal to a named source' => [['cache' => ['path' => '/srv/media'], 'sources' => ['media' => '/srv/media/']]];
+        yield 'source inside the cache' => [['cache' => ['path' => '%kernel.project_dir%/public/images'], 'sources' => ['uploads' => '%kernel.project_dir%/public/images/uploads']]];
+    }
+
+    /**
+     * image:purge empties the cache directory: a source in it would lose its images.
+     *
+     * @param array<string, mixed> $config
+     */
+    #[DataProvider('cacheHoldingASource')]
+    public function testCacheDirectoryMustNotHoldASource(array $config): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('image:purge empties the cache directory');
+
+        $this->load($config);
+    }
+
+    public function testCacheInsideASourceIsAccepted(): void
+    {
+        // Serving images from public/ with the default cache public/_image: purge only ever empties public/_image.
+        $container = $this->load(['sources' => ['default' => '%kernel.project_dir%/public']]);
+
+        self::assertSame('%kernel.project_dir%/public/_image', $container->getParameter('id_sign_image.cache.path'));
+    }
+
     public function testUsablePermissionsAndPathsAreAccepted(): void
     {
         $container = $this->load([

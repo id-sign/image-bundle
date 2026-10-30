@@ -96,6 +96,10 @@ final class ConfigValueValidator
             throw self::invalid('route_prefix', \sprintf('route_prefix must start with "/" and must not end with one; its segments may contain letters, digits and "._~-" and must not be "." or "..", e.g. "/_image" or "/media/images" (got "%s")', \is_scalar($routePrefix) ? $routePrefix : get_debug_type($routePrefix)));
         }
 
+        // image:purge empties the cache directory: a source in it would lose its images, and raster variants could
+        // not be created anyway (the variants directory photo.jpg/ collides with the source file photo.jpg).
+        $validator->assertCacheOutsideSources($cachePath ?? '%kernel.project_dir%/public'.$routePrefix, self::list($config, 'sources'));
+
         // The owner needs read/write (files) or read/write/execute (directories), or every cache write fails.
         $validator->assertMode($config['file_permissions'] ?? null, 0o600, 'file_permissions', true);
         $validator->assertMode($config['directory_permissions'] ?? null, 0o700, 'directory_permissions', false);
@@ -107,6 +111,47 @@ final class ConfigValueValidator
         $this->container->resolveEnvPlaceholders($value, null, $usedEnvs);
 
         return [] !== $usedEnvs;
+    }
+
+    /**
+     * A source inside the cache directory (or the same directory) is refused; the cache inside a source is fine —
+     * sources.default: public with the default cache public/_image only ever empties public/_image.
+     *
+     * @param array<mixed> $sources
+     */
+    private function assertCacheOutsideSources(mixed $cachePath, array $sources): void
+    {
+        $cache = $this->resolvePath($cachePath);
+        if (null === $cache) {
+            return;
+        }
+
+        foreach ($sources as $name => $sourcePath) {
+            $source = $this->resolvePath($sourcePath);
+
+            if (null !== $source && ($source === $cache || str_starts_with($source.'/', $cache.'/'))) {
+                throw self::invalid('cache.path', \sprintf('the cache directory "%s" holds the source "%s" (%s) — image:purge empties the cache directory and would delete the source images; give the cache a directory of its own, e.g. cache.path: "%%kernel.project_dir%%/public/_image"', $cache, $source, 'sources.'.$name));
+            }
+        }
+    }
+
+    /**
+     * The path with parameters resolved and slashes normalized, or null when it cannot be known at build time (an env
+     * value, an unknown parameter).
+     */
+    private function resolvePath(mixed $path): ?string
+    {
+        if (!\is_string($path) || $this->isEnv($path)) {
+            return null;
+        }
+
+        try {
+            $resolved = $this->container->getParameterBag()->resolveValue($path);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return \is_string($resolved) ? rtrim((string) preg_replace('#/+#', '/', $resolved), '/') : null;
     }
 
     private function assertRange(mixed $value, int $min, int $max, string $path): void

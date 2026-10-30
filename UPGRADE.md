@@ -34,6 +34,8 @@ These used to pass and break only when an image was rendered or requested:
   YAML and never built.
 - A `route_prefix` that does not start with `/`, ends with one, has a `.` or `..` segment or characters other than
   letters, digits and `._~-`.
+- A cache directory (`cache.path`, or the new default `public/<route_prefix>`) that is a source directory or contains
+  one — `image:purge` empties the cache directory and would delete the source images.
 
 ### Configuration merging and environment variables
 
@@ -63,7 +65,9 @@ If you worked around it with `route_prefix: '/media/images/_image'` and the impo
 keep that `route_prefix`.
 
 Without an explicit `cache.path`, a custom prefix now caches under `public/<route_prefix>` (where `try_files` looks)
-instead of `public/_image`; the old directory can be deleted.
+instead of `public/_image`; the old directory can be deleted. That directory belongs to the bundle: `image:purge`
+empties it, files of your own included — with `route_prefix: /images` over a `public/images/` that holds your static
+images, move either the images or the prefix.
 
 ### Templates, `image_url()` and `ImageUrlGenerator`
 
@@ -78,13 +82,6 @@ A `quality` outside 1-100 passed to the component, `image_url()` or `ImageUrlGen
 `ImageUrlGenerator::generate()` and `generateFromRequest()` without a `quality` argument used a hard-coded `80`; they
 now use the configured quality of the format (`format_quality`, then `default_quality`), like `<twig:Image>` and
 `image_url()`. With `default_quality: 80` and no `format_quality` nothing changes; otherwise those URLs change once.
-
-### Cache purge
-
-`image:purge` and `deleteBySource()` now delete only files the bundle wrote (see
-[Cache management](README.md#cache-management)). SVG copies cached by earlier versions carry no marker, and variants
-named `….jpg` by versions up to 0.3 are not recognised: both are left in place, delete them once by hand — they are
-generated again on the next request.
 
 ### PHP API
 

@@ -23,7 +23,7 @@ class PurgeCacheCommandTest extends TestCase
         foreach (['uploads/photo.jpg', '@reference/logo.png'] as $src) {
             mkdir($this->cacheDir.'/'.$src, 0o775, true);
             touch($this->cacheDir.'/'.$src.'/aa00bb11cc22dd33_64_auto_none_80.webp');
-            file_put_contents($this->cacheDir.'/'.$src.'/meta.json', '{"width":64,"height":48}');
+            touch($this->cacheDir.'/'.$src.'/meta.json');
         }
 
         $this->tester = new CommandTester(new PurgeCacheCommand(
@@ -120,48 +120,5 @@ class PurgeCacheCommandTest extends TestCase
 
         self::assertDirectoryExists($this->cacheDir.'/uploads/photo.jpg');
         self::assertStringContainsString('Would delete 2 cached file(s) for "uploads/photo.jpg"', $this->tester->getDisplay());
-    }
-
-    /**
-     * With route_prefix /images the default cache.path is public/images, which may hold the application's own files.
-     */
-    public function testPurgeLeavesFilesTheBundleDidNotWrite(): void
-    {
-        touch($this->cacheDir.'/logo.svg');
-        touch($this->cacheDir.'/uploads/site.css');
-
-        $this->tester->execute([]);
-        self::assertStringContainsString('Would delete 4 cached file(s).', $this->tester->getDisplay());
-
-        $this->tester->execute(['--force' => true]);
-        self::assertStringContainsString('Deleted 4 cached file(s).', $this->tester->getDisplay());
-        self::assertFileExists($this->cacheDir.'/logo.svg');
-        self::assertFileExists($this->cacheDir.'/uploads/site.css');
-    }
-
-    public function testPurgeByAgeLeavesFilesTheBundleDidNotWrite(): void
-    {
-        $old = time() - 10 * 86400;
-        touch($this->cacheDir.'/uploads/site.css', $old);
-        touch($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp', $old);
-
-        $this->tester->execute(['--modified-before' => '5', '--force' => true]);
-
-        self::assertStringContainsString('Deleted 1 cached file(s).', $this->tester->getDisplay());
-        self::assertFileExists($this->cacheDir.'/uploads/site.css');
-        self::assertFileDoesNotExist($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
-    }
-
-    public function testPurgeByAgeRemovesTheDirectoriesItEmptied(): void
-    {
-        $old = time() - 10 * 86400;
-        foreach (['aa00bb11cc22dd33_64_auto_none_80.webp', 'meta.json'] as $name) {
-            touch($this->cacheDir.'/uploads/photo.jpg/'.$name, $old);
-        }
-
-        $this->tester->execute(['--modified-before' => '5', '--force' => true]);
-
-        self::assertDirectoryDoesNotExist($this->cacheDir.'/uploads', 'photo.jpg/ and then uploads/ were emptied');
-        self::assertDirectoryExists($this->cacheDir.'/@reference/logo.png', 'its files are newer');
     }
 }
