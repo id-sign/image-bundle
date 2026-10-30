@@ -388,7 +388,8 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 ## Upgrading from v0.4.0 or earlier
 
-See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: `ImageUrlGenerator` without `quality` now uses
+See "Upgrading from v0.4.0 or earlier" in the bundle README. In short: a signed URL with a leading zero in a number
+(`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and answers 400; `ImageUrlGenerator` without `quality` now uses
 the configured quality of the format instead of a hard-coded `80` (URLs change only when `default_quality` is not 80 or
 `format_quality` is set), a quality outside 1-100 — in config, prop, `image_url()` or the generator — throws, and
 `formats` accepts only `avif`/`webp`/`jpeg`/`png` once each and `device_sizes` only breakpoints ≥ 1 once each, with a

@@ -183,7 +183,9 @@ The URL path doubles as the filesystem cache path. `CachePathResolver` generates
 back from a path (`resolve()` and `parse()`). The `parse()` pattern is anchored with the `D` modifier: a bare `$` also
 matches before a trailing newline, and the route's `.+` requirement lets `%0A` through — a known signed URL plus `%0A`
 would otherwise parse and verify like the original and write a second variant file with `\n` in its name (2× CPU and
-disk per public URL).
+disk per public URL). For the same reason the numbers allow no leading zero (`[1-9]\d*`): the signature covers the
+parsed integers, so up to 0.4 `_0800_`, `_00800_`, … each verified like `_800_` and was encoded and cached as another
+file — unlimited variants from one public URL.
 
 Source path (`src`) is the first path segment — this means all cached data for a source image (variants, `meta.json`,
 `blur.txt`) live under the same directory prefix. `deleteBySource('uploads/photo.jpg')` = delete the
@@ -651,7 +653,8 @@ the sole author.
   404), source above `max_source_pixels`/`max_source_bytes` (413, nothing cached), cached variant of a deleted source
   still served (cache before source, raster and SVG), avif/webp format
   generation, watermark processing, SVG passthrough (+ `sandbox`/`nosniff` headers), named sources (`@reference/` cache
-  directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400)
+  directory, unknown source 404, `@default/` 403/404, `@reference//x` 404), signed URL + `%0A` (400), signed URL with
+  a leading zero (400)
 - Route test: `ImageRouteTest` — `config/routes.yaml` through FrameworkBundle's router, the route path follows
   `route_prefix` and matches the URLs `CachePathResolver` generates (default and nested prefix, encoded src)
 - Test fixtures: `tests/Fixtures/test.jpg` (100x75 red), `tests/Fixtures/detailed.jpg` (512x512 random noise — high
