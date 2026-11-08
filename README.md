@@ -11,7 +11,8 @@ interfaces for custom image sources and cache storage. Ready for FrankenPHP work
 ## Requirements
 
 - PHP 8.2+
-- Symfony ^7.4 | ^8.0
+- Symfony ^7.4 | ^8.0 with FrameworkBundle (its router resolves `route_prefix` in the bundle route, and it provides
+  `kernel.secret`, from which the URL signing key is derived)
 - ext-imagick, with ImageMagick built with the `lcms` delegate (`convert -list configure | grep DELEGATES`) — it
   performs the ICC colour conversion; without it profiled sources are logged and served unconverted, see
   [Colour profiles and metadata](#colour-profiles-and-metadata)

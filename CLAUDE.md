@@ -18,6 +18,9 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 - `symfony/ux-twig-component` (bundle dependency)
 - `symfony/yaml` (the DI extension loads `services.yaml`)
 - `symfony/service-contracts` (`ResetInterface`, `ServiceProviderInterface`)
+- `symfony/framework-bundle` — its router resolves `%id_sign_image.route_prefix%` in the path of
+  `config/routes.yaml` (a plain `symfony/routing` router leaves the placeholder literal: every image 404), and it
+  defines `kernel.secret`, the HMAC key's root. Up to 0.5-dev it sat in `require-dev` only (`ImageRouteTest` uses it).
 
 ### Dev dependencies
 
@@ -26,8 +29,6 @@ placeholder, named watermark profiles, HMAC-signed URLs, and aggressive HTTP cac
 - `phpunit/phpunit`
 - `symfony/property-access` (the component test writes props the way ux-twig-component does — `quality="90"` must
   coerce into `int|array|null`)
-- `symfony/framework-bundle` (`ImageRouteTest` reads `config/routes.yaml` through its router, which resolves the
-  `%id_sign_image.route_prefix%` in the route path)
 
 ## Architecture
 
