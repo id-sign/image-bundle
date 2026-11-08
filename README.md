@@ -310,7 +310,8 @@ The display height in pixels. When omitted and auto dimensions is enabled (globa
 per-component via `autoDimensions` prop), the height is automatically calculated from the source image's aspect ratio.
 When both `width` and `height` are provided with a `fit` mode, the server produces an image with exactly these
 dimensions. Without `fit`, `height` is only the HTML attribute: the server resizes by `width` and keeps the source
-aspect ratio. A `height` below 1 throws an `InvalidArgumentException`.
+aspect ratio. A `height` below 1 or above `max_width` throws an `InvalidArgumentException` — the controller trusts the
+signature, and with `fit="cover"` a mistyped `height="60000"` would scale the source to cover that box before cropping.
 
 ### `autoDimensions`
 
@@ -980,7 +981,7 @@ check the result in the Facebook Sharing Debugger and the LinkedIn Post Inspecto
 |------------------|---------------|----------|-------------------------------------------------------------------|
 | `src`            | string        | yes      | Source path, optionally `@source/`-prefixed                       |
 | `width`          | int           | yes      | Output width in pixels                                            |
-| `height`         | int           | no       | Processing height, used only together with `fit` (auto-calculated if `autoDimensions` enabled) |
+| `height`         | int           | no       | Processing height, 1…`max_width`, used only together with `fit` (auto-calculated if `autoDimensions` enabled) |
 | `fit`            | string        | no       | `cover`, `contain`, or `scale-down`                               |
 | `quality`        | int\|map      | no       | Output quality 1-100, or a `{format: quality}` map applied to the negotiated or given format; omitted: `format_quality`, then `default_quality` |
 | `format`         | string        | no       | A configured format or the source's fallback (`jpeg`, `png`, …), else throws. Omitted: negotiated from the request, `webp` without one |
