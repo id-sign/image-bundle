@@ -200,9 +200,26 @@ class ImageUrlGeneratorTest extends TestCase
     public function testHeightBelowOneIsRefused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage('ImageUrlGenerator for src "photo.jpg": height must be at least 1, or omitted (got 0)');
+        $this->expectExceptionMessage('ImageUrlGenerator for src "photo.jpg": height must be at least 1 and at most id_sign_image.max_width (4096), or omitted (got 0)');
 
         $this->generator->generate('photo.jpg', 800, 0, 'cover', format: 'webp');
+    }
+
+    /**
+     * The controller trusts the signature: a signed height="60000" with fit="cover" would scale a 4:3 source to
+     * 80000×60000 px before the crop. max_width caps both dimensions.
+     */
+    public function testHeightAboveMaxWidthIsRefused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('ImageUrlGenerator for src "photo.jpg": height must be at least 1 and at most id_sign_image.max_width (4096), or omitted (got 60000)');
+
+        $this->generator->generate('photo.jpg', 200, 60000, 'cover', format: 'webp');
+    }
+
+    public function testHeightEqualToMaxWidthIsAccepted(): void
+    {
+        self::assertStringContainsString('_200_4096_cover_', $this->generator->generate('photo.jpg', 200, 4096, 'cover', format: 'webp'));
     }
 
     public function testUnknownFitIsRefused(): void

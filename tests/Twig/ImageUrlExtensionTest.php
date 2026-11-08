@@ -38,10 +38,8 @@ class ImageUrlExtensionTest extends TestCase
             $generator,
             $this->metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             false,
-            4096,
             false,
         );
     }
@@ -76,7 +74,7 @@ class ImageUrlExtensionTest extends TestCase
     public function testWithoutRequestAndWithoutWebpConfiguredUsesTheSourceFallback(): void
     {
         $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif']), new QualityResolver(80), '/_image', 4096);
-        $extension = new ImageUrlExtension($generator, $this->metadataReader, $this->requestStack, new QualityResolver(80), null, false, 4096, false);
+        $extension = new ImageUrlExtension($generator, $this->metadataReader, $this->requestStack, null, false, false);
 
         self::assertStringEndsWith('.jpeg', $extension->imageUrl('photo.jpg', 800));
     }
@@ -111,10 +109,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $this->metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             'copyright',
             false,
-            4096,
             false,
         );
 
@@ -129,10 +125,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $this->metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             'copyright',
             false,
-            4096,
             false,
         );
 
@@ -160,7 +154,7 @@ class ImageUrlExtensionTest extends TestCase
     public function testNegotiatedFormatGetsItsConfiguredQuality(): void
     {
         $generator = new ImageUrlGenerator(new CachePathResolver(new UrlSigner('test-secret')), new FormatNegotiator(['avif', 'webp']), new QualityResolver(80, ['avif' => 50]), '/_image', 4096);
-        $extension = new ImageUrlExtension($generator, $this->metadataReader, $this->requestStack, new QualityResolver(80), null, false, 4096, false);
+        $extension = new ImageUrlExtension($generator, $this->metadataReader, $this->requestStack, null, false, false);
         $this->requestStack->push(Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'image/avif,image/webp']));
 
         self::assertStringEndsWith('_50.avif', $extension->imageUrl('photo.jpg', 800));
@@ -172,7 +166,7 @@ class ImageUrlExtensionTest extends TestCase
     {
         $metadataReader = $this->createMock(ImageMetadataReader::class);
         $metadataReader->expects($this->never())->method('calculateHeight');
-        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, new QualityResolver(80), null, true, 4096, false);
+        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, null, true, false);
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('fit must be cover, contain, scale-down');
@@ -184,7 +178,7 @@ class ImageUrlExtensionTest extends TestCase
     {
         $metadataReader = $this->createMock(ImageMetadataReader::class);
         $metadataReader->expects($this->never())->method('resolveScaleDownDimensions');
-        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, new QualityResolver(80), null, false, 4096, false);
+        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, null, false, false);
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage('height must be at least 1');
@@ -192,11 +186,23 @@ class ImageUrlExtensionTest extends TestCase
         $extension->imageUrl('photo.jpg', 800, height: -1, fit: 'scale-down', format: 'webp');
     }
 
+    public function testHeightAboveMaxWidthThrowsBeforeReadingMetadata(): void
+    {
+        $metadataReader = $this->createMock(ImageMetadataReader::class);
+        $metadataReader->expects($this->never())->method('resolveScaleDownDimensions');
+        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, null, false, false);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('image_url() for src "photo.jpg": height must be at least 1 and at most id_sign_image.max_width (4096)');
+
+        $extension->imageUrl('photo.jpg', 800, height: 4097, fit: 'scale-down', format: 'webp');
+    }
+
     public function testInvalidQualityThrowsBeforeReadingMetadata(): void
     {
         $metadataReader = $this->createMock(ImageMetadataReader::class);
         $metadataReader->expects($this->never())->method('calculateHeight');
-        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, new QualityResolver(80), null, true, 4096, false);
+        $extension = new ImageUrlExtension($this->createUrlGenerator(), $metadataReader, $this->requestStack, null, true, false);
 
         $this->expectException(\InvalidArgumentException::class);
 
@@ -246,10 +252,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             false,
-            4096,
             false,
         );
 
@@ -267,10 +271,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             true,
-            4096,
             false,
         );
 
@@ -286,10 +288,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             new ImageMetadataReader(new LocalFilesystemSource(__DIR__.'/../Fixtures'), new SourceSizeValidator(0), new LocalFilesystemCacheStorage($cacheDir, 3600, null, 0o770)),
             $this->requestStack,
-            new QualityResolver(80),
             null,
             false,
-            4096,
             false,
         );
 
@@ -305,10 +305,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $this->metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             true,
-            4096,
             false,
         );
 
@@ -363,10 +361,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $this->metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             false,
-            4096,
             true, // global lossless on
         );
 
@@ -381,10 +377,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $this->metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             false,
-            4096,
             true, // global lossless on
         );
 
@@ -435,10 +429,8 @@ class ImageUrlExtensionTest extends TestCase
             $this->createUrlGenerator(),
             $metadataReader,
             $this->requestStack,
-            new QualityResolver(80),
             null,
             false,
-            4096,
             false,
         );
     }
@@ -474,10 +466,8 @@ class ImageUrlExtensionTest extends TestCase
             new ImageUrlGenerator($resolver, new FormatNegotiator(['avif', 'webp']), new QualityResolver(80), '/_image', 4096),
             $metadataReader,
             new RequestStack(),
-            new QualityResolver(80),
             null,
             true,
-            4096,
             false,
         );
 

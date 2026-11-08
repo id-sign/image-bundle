@@ -146,6 +146,8 @@ class IdSignImageExtensionTest extends TestCase
         yield 'route_prefix over the default source' => [['route_prefix' => '/images', 'sources' => ['default' => '%kernel.project_dir%/public/images']]];
         yield 'cache.path equal to a named source' => [['cache' => ['path' => '/srv/media'], 'sources' => ['media' => '/srv/media/']]];
         yield 'source inside the cache' => [['cache' => ['path' => '%kernel.project_dir%/public/images'], 'sources' => ['uploads' => '%kernel.project_dir%/public/images/uploads']]];
+        yield 'source reaching into the cache through ".."' => [['sources' => ['uploads' => '%kernel.project_dir%/public/images/../_image/uploads']]];
+        yield 'source equal to the cache through "." and "//"' => [['sources' => ['uploads' => '%kernel.project_dir%//public/./_image/']]];
     }
 
     /**
@@ -160,6 +162,51 @@ class IdSignImageExtensionTest extends TestCase
         $this->expectExceptionMessage('image:purge empties the cache directory');
 
         $this->load($config);
+    }
+
+    public function testCacheDirectoryMustNotHoldAWatermark(): void
+    {
+        // The first image:purge would delete the watermark image: 500 for every watermarked variant afterwards.
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('holds the watermark image "'.$this->projectDir.'/public/_image/wm.png" (watermarks.copyright.path)');
+
+        $this->load(['watermarks' => ['copyright' => ['path' => '%kernel.project_dir%/public/_image/wm.png']]]);
+    }
+
+    public function testWatermarkNextToTheCacheIsAccepted(): void
+    {
+        $container = $this->load(['watermarks' => ['copyright' => ['path' => '%kernel.project_dir%/public/_image/../watermark.png']]]);
+
+        self::assertSame('%kernel.project_dir%/public/_image', $container->getParameter('id_sign_image.cache.path'));
+    }
+
+    public function testRoutePrefixFromAContainerParameterIsResolvedAndAccepted(): void
+    {
+        // Shared with access_control or a web server template; v0.4 accepted it and the router resolves it.
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.project_dir', $this->projectDir);
+        $container->setParameter('kernel.secret', 'test-secret');
+        $container->setParameter('app.images_prefix', '/media/images');
+        $container->register(RequestStack::class);
+
+        (new IdSignImageExtension())->load([['route_prefix' => '%app.images_prefix%']], $container);
+
+        self::assertSame('%kernel.project_dir%/public%app.images_prefix%', $container->getParameter('id_sign_image.cache.path'));
+        self::assertSame($this->projectDir.'/public/media/images', $container->getParameterBag()->resolveValue($container->getParameter('id_sign_image.cache.path')));
+    }
+
+    public function testRoutePrefixFromAContainerParameterIsValidatedByItsValue(): void
+    {
+        $container = new ContainerBuilder();
+        $container->setParameter('kernel.project_dir', $this->projectDir);
+        $container->setParameter('kernel.secret', 'test-secret');
+        $container->setParameter('app.images_prefix', 'media/images/');
+        $container->register(RequestStack::class);
+
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('route_prefix must start with "/" and must not end with one; its segments may contain letters, digits and "._~-" and must not be "." or "..", e.g. "/_image" or "/media/images" (got "media/images/")');
+
+        (new IdSignImageExtension())->load([['route_prefix' => '%app.images_prefix%']], $container);
     }
 
     public function testCacheInsideASourceIsAccepted(): void

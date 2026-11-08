@@ -86,7 +86,7 @@ class ImageComponent
 
         $this->qualityResolver->assertValid($this->quality, $this->src);
         CachePathResolver::assertFit($this->fit, \sprintf('<twig:Image src="%s" />', $this->src));
-        CachePathResolver::assertHeight($this->height, \sprintf('<twig:Image src="%s" />', $this->src));
+        CachePathResolver::assertHeight($this->height, $this->maxWidth, \sprintf('<twig:Image src="%s" />', $this->src));
 
         $this->resolvedWatermark = match (true) {
             false === $this->watermark => null,
@@ -96,9 +96,9 @@ class ImageComponent
 
         $this->resolvedLossless = $this->lossless ?? $this->globalLossless;
 
-        $useAutoDimensions = $this->autoDimensions ?? $this->globalAutoDimensions;
+        $calculateHeightFromSource = null === $this->height && ($this->autoDimensions ?? $this->globalAutoDimensions) && !$this->svg;
 
-        if (null === $this->height && $useAutoDimensions && !$this->svg) {
+        if ($calculateHeightFromSource) {
             $this->resolvedHeight = $this->metadataReader->calculateHeight($this->src, $this->width);
         } else {
             $this->resolvedHeight = $this->height;

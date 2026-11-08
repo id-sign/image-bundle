@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace IdSign\ImageBundle\Twig;
 
-use IdSign\ImageBundle\Cache\CachePathResolver;
 use IdSign\ImageBundle\Service\ImageMetadataReader;
 use IdSign\ImageBundle\Service\ImageUrlGenerator;
-use IdSign\ImageBundle\Service\QualityResolver;
 use IdSign\ImageBundle\Source\SourcePath;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Twig\Extension\AbstractExtension;
@@ -19,10 +17,8 @@ class ImageUrlExtension extends AbstractExtension
         private readonly ImageUrlGenerator $urlGenerator,
         private readonly ImageMetadataReader $metadataReader,
         private readonly RequestStack $requestStack,
-        private readonly QualityResolver $qualityResolver,
         private readonly ?string $defaultWatermark,
         private readonly bool $globalAutoDimensions,
-        private readonly int $maxWidth,
         private readonly bool $globalLossless,
     ) {
     }
@@ -50,18 +46,8 @@ class ImageUrlExtension extends AbstractExtension
     ): string {
         $src = SourcePath::normalize($src);
 
-        if ($width <= 0) {
-            throw new \InvalidArgumentException(\sprintf('image_url() requires width > 0 (got %d for src "%s").', $width, $src));
-        }
-
-        if ($width > $this->maxWidth) {
-            throw new \InvalidArgumentException(\sprintf('image_url() width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $width, $src, $this->maxWidth));
-        }
-
-        // Before the metadata I/O below; the generator checks again for its direct callers.
-        $this->qualityResolver->assertValid($quality, $src);
-        CachePathResolver::assertFit($fit, \sprintf('image_url() for src "%s"', $src));
-        CachePathResolver::assertHeight($height, \sprintf('image_url() for src "%s"', $src));
+        // Before the metadata I/O below; the generator runs the same checks again for its direct callers.
+        $this->urlGenerator->assertArguments($src, $width, $height, $fit, $quality, 'image_url()');
 
         $resolvedWatermark = match (true) {
             false === $watermark => null,
@@ -73,8 +59,9 @@ class ImageUrlExtension extends AbstractExtension
 
         $resolvedHeight = $height;
         $isSvg = SourcePath::isSvg($src);
+        $calculateHeightFromSource = null === $height && ($autoDimensions ?? $this->globalAutoDimensions) && !$isSvg;
 
-        if (null === $height && ($autoDimensions ?? $this->globalAutoDimensions) && !$isSvg) {
+        if ($calculateHeightFromSource) {
             $resolvedHeight = $this->metadataReader->calculateHeight($src, $width);
         }
 

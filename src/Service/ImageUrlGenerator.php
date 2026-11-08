@@ -50,18 +50,7 @@ class ImageUrlGenerator
         bool $lossless = false,
     ): string {
         $src = SourcePath::normalize($src);
-
-        if ($width <= 0) {
-            throw new \InvalidArgumentException(\sprintf('ImageUrlGenerator requires width > 0 (got %d for src "%s").', $width, $src));
-        }
-
-        if ($width > $this->maxWidth) {
-            throw new \InvalidArgumentException(\sprintf('ImageUrlGenerator width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $width, $src, $this->maxWidth));
-        }
-
-        $this->qualityResolver->assertValid($quality, $src);
-        CachePathResolver::assertFit($fit, \sprintf('ImageUrlGenerator for src "%s"', $src));
-        CachePathResolver::assertHeight($height, \sprintf('ImageUrlGenerator for src "%s"', $src));
+        $this->assertArguments($src, $width, $height, $fit, $quality, 'ImageUrlGenerator');
 
         // Like <twig:Image>: an SVG is served as-is, there is no variant to sign. A signed raster URL would make the
         // controller rasterize an untrusted SVG, and its variants directory would collide with the passthrough file.
@@ -100,6 +89,33 @@ class ImageUrlGenerator
         $format = $this->formatNegotiator->negotiateFromRequest($request, $src);
 
         return $this->generate($src, $width, $height, $fit, $quality, $format, $watermark, $lossless);
+    }
+
+    /**
+     * The argument rules shared by every place that makes a URL: $width 1…max_width, $quality an int or a map within
+     * 1…100 for output formats only, $fit one of CachePathResolver::FITS, $height 1…max_width. One implementation, so
+     * image_url() — which checks before its metadata I/O and then calls generate(), which checks again for its direct
+     * PHP callers — and the generator can never drift apart in what they accept.
+     *
+     * @param string                      $src     already normalized
+     * @param int|array<string, int>|null $quality
+     * @param string                      $context the caller, for the message ("image_url()", "ImageUrlGenerator")
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function assertArguments(string $src, int $width, ?int $height, ?string $fit, int|array|null $quality, string $context): void
+    {
+        if ($width <= 0) {
+            throw new \InvalidArgumentException(\sprintf('%s requires width > 0 (got %d for src "%s").', $context, $width, $src));
+        }
+
+        if ($width > $this->maxWidth) {
+            throw new \InvalidArgumentException(\sprintf('%s width (%d) for src "%s" exceeds the configured id_sign_image.max_width (%d).', $context, $width, $src, $this->maxWidth));
+        }
+
+        $this->qualityResolver->assertValid($quality, $src);
+        CachePathResolver::assertFit($fit, \sprintf('%s for src "%s"', $context, $src));
+        CachePathResolver::assertHeight($height, $this->maxWidth, \sprintf('%s for src "%s"', $context, $src));
     }
 
     /**

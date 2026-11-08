@@ -145,9 +145,10 @@ contract is uniform like `width`: an int outside 1…100, a map value that is no
 `FormatNegotiator::OUTPUT_FORMATS` (`jpg` included, the bundle writes `jpeg`) throws. A typo in a map key would
 otherwise fall back silently. A valid key for a format this source never gets (`png` on a JPEG, `avif` without it in
 `formats`) is ignored on purpose: one map can serve every image of a template, like `format_quality` serves every
-source. `resolve()` trusts its input (it runs per format; `assertValid()` once per image). `Configuration` enforces
-the same range on `default_quality`, `format_quality` and `blur.quality` (`format_quality` keys merge across config
-files, a `when@prod` block can tune one format). Before `format_quality` there was no range check at all: `quality=0`
+source. `resolve()` trusts its input (it runs per format; `assertValid()` once per image). `ConfigValueValidator`
+enforces the same range on `default_quality`, `format_quality` and `blur.quality` (not the config tree — see "Where
+the checks live" under Watermark; `format_quality` keys merge across config files, a `when@prod` block can tune one
+format). Before `format_quality` there was no range check at all: `quality=0`
 reached Imagick. `CachePathResolverTest` pins `OUTPUT_FORMATS` to the extensions `parse()` accepts.
 
 Security trade-off, decided together with `format_quality`: the HMAC payload still has no format. With different
@@ -208,9 +209,14 @@ directory when a purge removed it before `fopen()` or while the request waited f
 lock, `clearstatcache()` first — PHP 8.2 otherwise reports the removed directory from its stat cache). Under a
 synthetic worst case — 4 writers against `purgeAll()` in a tight loop, 6 s — 0.4 lost ~1.6 writes per purge and 0.5
 ~1.2: most failures are a purge deleting the directory under a writer that already holds the lock, which a lock-free
-purge accepts. In practice a purge is rare and the next request regenerates the variant. `--modified-before` and
-`--accessed-before` take whole days only — `(int) "thirty"` was 0 and
-purged everything. `image:purge <src>` validates `src` through
+purge accepts. In practice a purge is rare and the next request regenerates the variant. Because it races writers,
+every step of a purge tolerates an entry that vanished between listing and deletion: `deleteContents()` and the
+command's `walkFiles()` use `scandir()` recursion instead of `RecursiveDirectoryIterator` (which throws when it
+descends into a directory a concurrent `deleteBySource()` removed), `unlink()`/`filemtime()`/`fileatime()` are
+silenced and a failed `unlink()` is not counted — under Symfony's ErrorHandler a bare warning is an `ErrorException`
+that aborted the purge halfway and left every later directory with its stale variants. `--modified-before` and
+`--accessed-before` take whole days ≥ 1 — `(int) "thirty"` was 0, and an explicit `0` means the same: every file
+older than now, the whole cache. `image:purge <src>` validates `src` through
 `CacheStorageInterface::getAbsolutePath()` before counting or deleting, so the dry run reports exactly what `--force`
 deletes and never walks outside the cache directory (`..`, `.` or an empty path — e.g. `@default/` normalized — exit
 with an error).
@@ -219,7 +225,10 @@ The cache directory belongs to the bundle: purge deletes everything below it (or
 wrote it. Since the default `cache.path` is the document root + `route_prefix`, `route_prefix: /images` over an
 application's `public/images/` would lose those files — the docs say so, and `ConfigValueValidator` refuses a cache
 directory that is a source directory or contains one (the case where purge would delete source images; a cache inside
-a source, e.g. source `public` with cache `public/_image`, is fine). Deciding ownership per file was tried during 0.5
+a source, e.g. source `public` with cache `public/_image`, is fine) or that holds a watermark `path` (the first purge
+would delete it: 500 for every watermarked variant). The comparison folds `//`, `/./` and `/../` segments lexically
+(`public/images/../_image/uploads` is inside `public/_image`); symlinks are not followed, the directories need not
+exist at build time. Deciding ownership per file was tried during 0.5
 and dropped: variants by name, `meta.json`/`blur.txt` by content, SVG copies by a marker file — three audit rounds
 found false positives (an application's `meta.json` with the same shape), false negatives (sources without an
 extension, `.lock` and `….jpg` files of older versions, orphan markers), reading content bumped the atime so
@@ -394,10 +403,18 @@ Same rule applies to `image_url()` Twig function — `height` without `fit` is i
 Exception: `fit="scale-down"` with a source smaller than the box replaces `width`/`height` with the source dimensions
 (see Fit modes).
 
-`height` below 1 throws at the entry points (`CachePathResolver::assertHeight()`, next to `assertFit()`):
-`parse()` accepts no height below 1 since leading zeros are refused, so a `_800_0_cover_` URL answered 400 — before
-that it parsed and produced an image. `ImageMetadataReader::calculateHeight()` returns at least 1, like the
-processor's `proportionalHeight()` (a 1200×1 strip at 400 px).
+`height` below 1 or above `max_width` throws at the entry points (`CachePathResolver::assertHeight()`, next to
+`assertFit()`): `parse()` accepts no height below 1 since leading zeros are refused, so a `_800_0_cover_` URL
+answered 400 — before that it parsed and produced an image. The upper bound is the same memory guard as for `width`:
+the controller trusts the signature, and a signed `height="60000"` (a typo for 600) with `fit="cover"` made
+`cropThumbnailImage()` scale a 4:3 source to 80000×60000 px before the crop — a disk-backed pixel cache for minutes,
+holding the variants-directory lock. Only the explicit prop is checked; a height `auto_dimensions` computes from the
+source aspect ratio cannot blow up the output (it keeps the source's proportions at ≤ `max_width`).
+`ImageMetadataReader::calculateHeight()` returns at least 1, like the processor's `proportionalHeight()` (a 1200×1
+strip at 400 px). `image_url()` and `ImageUrlGenerator::generate()` share these argument checks (width, quality, fit,
+height) in `ImageUrlGenerator::assertArguments()`, with the caller's name as context: `image_url()` runs it before
+its metadata I/O and `generate()` again for its direct PHP callers — one implementation, so the two cannot drift in
+what they accept. The component keeps its own messages (they carry prop-specific guidance).
 
 #### Fit modes
 
@@ -460,8 +477,11 @@ re-runs the config tree with a dummy for every env value (0 for `int:`, `''` oth
 in the tree failed every application that sets the option from the environment — the first 0.5 draft did that for
 six options v0.4 accepted. In `load()` an env value is still a placeholder (`resolveEnvPlaceholders(…, $usedEnvs)`)
 and is skipped; it is resolved at runtime unchecked, as before. `route_prefix` is the one option that refuses env: it
-is the route path and the default cache directory, both fixed at build time. `IdSignImageExtensionTest` compiles a
-container with an env value per option. Permission modes must give the owner rw (files) / rwx (directories) and stay
+is the route path and the default cache directory, both fixed at build time. A container parameter
+(`'%app.images_prefix%'`, shared with `access_control` or a web server template) is fixed at build time as well: it
+is resolved through the parameter bag and the resolved value is validated — the raw string with `%` goes into
+`id_sign_image.route_prefix` and the default `cache.path`, where the container resolves it. `IdSignImageExtensionTest`
+compiles a container with an env value per option. Permission modes must give the owner rw (files) / rwx (directories) and stay
 within 0…0o7777 (`-1` has every bit set and passed the owner check as 0o7777) — a decimal `660` (0o1224) and YAML's
 string `"0660"` are the usual mistakes; from `%env(int:…)%` the mode is decimal (432, 504), which the docs say.
 
@@ -699,13 +719,16 @@ the sole author.
   `NamedImageSource`,
   `SourcePath`, `IdSignImageExtension` (`sources`, `formats`, `device_sizes` and `format_quality` config, a container
   compiled with an `%env()%` value per option, tagged
-  registration, compiled-container wiring — needs `symfony/yaml`, cache directory holding a source refused),
-  `PurgeCacheCommand` (non-numeric days refused), `LocalFilesystemCacheStorage` (a write survives its directory being
-  purged while it waited for the lock — `pcntl_fork`, skipped without pcntl),
+  registration, compiled-container wiring — needs `symfony/yaml`, cache directory holding a source or a watermark
+  refused, `..` folded, `route_prefix` from a parameter),
+  `PurgeCacheCommand` (non-numeric or zero days refused, an age purge survives a file it cannot delete),
+  `LocalFilesystemCacheStorage` (a write survives its directory being purged while it waited for the lock —
+  `pcntl_fork`, skipped when fork fails or without pcntl; a purge survives a file it cannot delete and does not count
+  it),
   `SrcsetGenerator`,
   `ImageComponent` (per-format quality, map prop),
-  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules, SVG passthrough, quality
-  resolved per negotiated format),
+  `ImageUrlExtension`, `ImageUrlGenerator` (format gate, height/fit and `max_width` rules for width and height, SVG
+  passthrough, quality resolved per negotiated format),
   `ImagickProcessor`
   (AVIF/WebP quality + AVIF lossless regression — skips when no AVIF encoder; + srcset breakpoint width; a watermark
   narrower than 1 px),
@@ -760,7 +783,7 @@ id_sign_image:
             margin: 10                  # ≥ 0
     auto_dimensions: false
     lossless: false                     # true lossless encoding for webp/avif (ignored for jpeg/png)
-    max_width: 4096                     # guard against memory exhaustion
+    max_width: 4096                     # guard against memory exhaustion; caps width and an explicit height
     max_source_bytes: 20971520          # 20 MiB, 0 disables
     max_source_pixels: 64000000         # 64 MP, width × height from the header before decoding, 0 disables
     file_permissions: 0o660             # owner rw; null = use umask default (YAML: 0660 is a string)

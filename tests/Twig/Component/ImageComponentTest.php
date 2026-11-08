@@ -745,6 +745,21 @@ class ImageComponentTest extends TestCase
         $component->postMount();
     }
 
+    public function testHeightAboveMaxWidthThrowsOnMount(): void
+    {
+        // A typo for 600: signed into every <source>, the first request would scale the source to cover 200×60000.
+        $component = $this->createComponentWithStubs();
+        $component->src = 'uploads/photo.jpg';
+        $component->width = 200;
+        $component->height = 60000;
+        $component->fit = 'cover';
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('<twig:Image src="uploads/photo.jpg" />: height must be at least 1 and at most id_sign_image.max_width (4096), or omitted (got 60000)');
+
+        $component->postMount();
+    }
+
     public function testInvalidQualityThrowsOnMountEvenForSvg(): void
     {
         $component = $this->createComponentWithStubs();

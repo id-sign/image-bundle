@@ -122,6 +122,8 @@ class PurgeCacheCommandTest extends TestCase
         yield 'word' => [['--modified-before' => 'thirty']];
         yield 'negative' => [['--accessed-before' => '-5']];
         yield 'fraction' => [['--modified-before' => '1.5']];
+        yield 'zero' => [['--accessed-before' => '0']];
+        yield 'zero with leading zeros' => [['--modified-before' => '00']];
     }
 
     /**
@@ -137,6 +139,46 @@ class PurgeCacheCommandTest extends TestCase
         self::assertSame(Command::INVALID, $exitCode);
         self::assertStringContainsString('takes a number of days', $this->tester->getDisplay());
         self::assertFileExists($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp');
+    }
+
+    /**
+     * Under Symfony's console ErrorHandler a warning is an exception: a bare unlink() or filemtime() on a file that
+     * another process removed (or one the purge may not touch) aborted the command halfway through the cache.
+     */
+    public function testAgePurgeSurvivesAFileItCannotDeleteAndDoesNotCountIt(): void
+    {
+        if (0 === posix_geteuid()) {
+            self::markTestSkipped('root deletes from a read-only directory');
+        }
+
+        $old = time() - 3 * 86400;
+        touch($this->cacheDir.'/uploads/photo.jpg/aa00bb11cc22dd33_64_auto_none_80.webp', $old);
+        touch($this->cacheDir.'/uploads/photo.jpg/meta.json', $old);
+        touch($this->cacheDir.'/@reference/logo.png/meta.json', $old);
+        chmod($this->cacheDir.'/@reference/logo.png', 0o555);
+        // Like Symfony's ErrorHandler: every warning is an exception, except one the code silenced with "@" — which
+        // the handler sees as a reduced error_reporting(). PHPUnit runs tests without E_WARNING in that level.
+        $previousLevel = error_reporting(\E_ALL);
+        set_error_handler(static function (int $severity, string $message): bool {
+            if (0 === (error_reporting() & $severity)) {
+                return false;
+            }
+
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $exitCode = $this->tester->execute(['--modified-before' => '1', '--force' => true]);
+        } finally {
+            restore_error_handler();
+            error_reporting($previousLevel);
+            chmod($this->cacheDir.'/@reference/logo.png', 0o775);
+        }
+
+        self::assertSame(Command::SUCCESS, $exitCode);
+        self::assertStringContainsString('Deleted 2 cached file(s)', $this->tester->getDisplay());
+        self::assertFileDoesNotExist($this->cacheDir.'/uploads/photo.jpg/meta.json');
+        self::assertFileExists($this->cacheDir.'/@reference/logo.png/meta.json');
     }
 
     public function testDryRunCountsNormalizedSource(): void

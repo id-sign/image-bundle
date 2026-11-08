@@ -91,14 +91,18 @@ final class ConfigValueValidator
         if ($validator->isEnv($routePrefix)) {
             throw self::invalid('route_prefix', 'it cannot come from an environment variable: it is the path of the bundle route and of the default cache directory, both fixed when the container is built');
         }
-        if (!\is_string($routePrefix) || 1 !== preg_match(self::ROUTE_PREFIX, $routePrefix)) {
+        // A container parameter ("%app.images_prefix%", shared with access_control or a web server template) is fixed
+        // at build time as well: it is resolved here and the value is what has to be a valid prefix.
+        $resolvedPrefix = \is_string($routePrefix) ? $container->getParameterBag()->resolveValue($routePrefix) : $routePrefix;
+        if (!\is_string($routePrefix) || !\is_string($resolvedPrefix) || 1 !== preg_match(self::ROUTE_PREFIX, $resolvedPrefix)) {
             // Without the leading slash URLs are relative to the page, a trailing one yields "//", which nginx merges.
-            throw self::invalid('route_prefix', \sprintf('route_prefix must start with "/" and must not end with one; its segments may contain letters, digits and "._~-" and must not be "." or "..", e.g. "/_image" or "/media/images" (got "%s")', \is_scalar($routePrefix) ? $routePrefix : get_debug_type($routePrefix)));
+            throw self::invalid('route_prefix', \sprintf('route_prefix must start with "/" and must not end with one; its segments may contain letters, digits and "._~-" and must not be "." or "..", e.g. "/_image" or "/media/images" (got "%s")', \is_scalar($resolvedPrefix) ? $resolvedPrefix : get_debug_type($resolvedPrefix)));
         }
 
         // image:purge empties the cache directory: a source in it would lose its images, and raster variants could
-        // not be created anyway (the variants directory photo.jpg/ collides with the source file photo.jpg).
-        $validator->assertCacheOutsideSources($cachePath ?? '%kernel.project_dir%/public'.$routePrefix, self::list($config, 'sources'));
+        // not be created anyway (the variants directory photo.jpg/ collides with the source file photo.jpg). A
+        // watermark image in it would be deleted by the first purge: 500 for every watermarked variant afterwards.
+        $validator->assertCacheOutsideSources($cachePath ?? '%kernel.project_dir%/public'.$routePrefix, self::list($config, 'sources'), $watermarks);
 
         // The owner needs read/write (files) or read/write/execute (directories), or every cache write fails.
         $validator->assertMode($config['file_permissions'] ?? null, 0o600, 'file_permissions', true);
@@ -114,12 +118,13 @@ final class ConfigValueValidator
     }
 
     /**
-     * A source inside the cache directory (or the same directory) is refused; the cache inside a source is fine —
-     * sources.default: public with the default cache public/_image only ever empties public/_image.
+     * A source or a watermark image inside the cache directory (or a source equal to it) is refused; the cache inside
+     * a source is fine — sources.default: public with the default cache public/_image only ever empties public/_image.
      *
      * @param array<mixed> $sources
+     * @param array<mixed> $watermarks
      */
-    private function assertCacheOutsideSources(mixed $cachePath, array $sources): void
+    private function assertCacheOutsideSources(mixed $cachePath, array $sources, array $watermarks): void
     {
         $cache = $this->resolvePath($cachePath);
         if (null === $cache) {
@@ -133,11 +138,21 @@ final class ConfigValueValidator
                 throw self::invalid('cache.path', \sprintf('the cache directory "%s" holds the source "%s" (%s) — image:purge empties the cache directory and would delete the source images; give the cache a directory of its own, e.g. cache.path: "%%kernel.project_dir%%/public/_image"', $cache, $source, 'sources.'.$name));
             }
         }
+
+        foreach ($watermarks as $name => $profile) {
+            $watermark = $this->resolvePath(\is_array($profile) ? $profile['path'] ?? null : null);
+
+            if (null !== $watermark && str_starts_with($watermark, $cache.'/')) {
+                throw self::invalid('cache.path', \sprintf('the cache directory "%s" holds the watermark image "%s" (%s) — image:purge empties the cache directory and would delete it, and every watermarked variant would answer 500 afterwards; move the watermark out of the cache directory', $cache, $watermark, 'watermarks.'.$name.'.path'));
+            }
+        }
     }
 
     /**
-     * The path with parameters resolved and slashes normalized, or null when it cannot be known at build time (an env
-     * value, an unknown parameter).
+     * The path with parameters resolved and "//", "/./" and "/../" segments folded lexically — "public/_image/../uploads"
+     * is "public/uploads", which the slash-only normalization of the first 0.5 draft let into the cache directory — or
+     * null when it cannot be known at build time (an env value, an unknown parameter). Symlinks are not followed: the
+     * directories need not exist when the container is built.
      */
     private function resolvePath(mixed $path): ?string
     {
@@ -151,7 +166,33 @@ final class ConfigValueValidator
             return null;
         }
 
-        return \is_string($resolved) ? rtrim((string) preg_replace('#/+#', '/', $resolved), '/') : null;
+        if (!\is_string($resolved)) {
+            return null;
+        }
+
+        $resolved = str_replace('\\', '/', $resolved);
+        $absolute = str_starts_with($resolved, '/');
+        $segments = [];
+
+        foreach (explode('/', $resolved) as $segment) {
+            if ('' === $segment || '.' === $segment) {
+                continue;
+            }
+
+            if ('..' === $segment) {
+                if ([] !== $segments && '..' !== end($segments)) {
+                    array_pop($segments);
+                } elseif (!$absolute) {
+                    $segments[] = '..';
+                }
+
+                continue;
+            }
+
+            $segments[] = $segment;
+        }
+
+        return ($absolute ? '/' : '').implode('/', $segments);
     }
 
     private function assertRange(mixed $value, int $min, int $max, string $path): void

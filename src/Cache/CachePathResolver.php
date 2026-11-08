@@ -33,16 +33,19 @@ class CachePathResolver
 
     /**
      * Where a height enters a URL: parse() accepts none below 1, so a 0 or a negative value in a signed URL answers
-     * 400 for every <source>.
+     * 400 for every <source>. The upper bound is max_width, the memory guard that already caps the width: the
+     * controller trusts the signature, and with fit="cover" a signed height="60000" (a typo for 600) scales a 4:3
+     * source to 80000×60000 px before the crop — a disk-backed pixel cache for minutes, holding the directory lock.
      *
-     * @param string $context where the value came from, for the message
+     * @param int    $maxHeight the configured max_width
+     * @param string $context   where the value came from, for the message
      *
      * @throws \InvalidArgumentException
      */
-    public static function assertHeight(?int $height, string $context): void
+    public static function assertHeight(?int $height, int $maxHeight, string $context): void
     {
-        if (null !== $height && $height < 1) {
-            throw new \InvalidArgumentException(\sprintf('%s: height must be at least 1, or omitted (got %d).', $context, $height));
+        if (null !== $height && ($height < 1 || $height > $maxHeight)) {
+            throw new \InvalidArgumentException(\sprintf('%s: height must be at least 1 and at most id_sign_image.max_width (%d), or omitted (got %d).', $context, $maxHeight, $height));
         }
     }
 
