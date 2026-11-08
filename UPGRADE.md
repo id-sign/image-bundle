@@ -89,6 +89,11 @@ in the component, `image_url()` and `ImageUrlGenerator`. It used to render URLs 
 so every `<source>` of the image was broken without an error anywhere. A height calculated from the aspect ratio is at
 least 1 px (a 1200×1 separator at 400 px rounded to 0).
 
+An explicit `height` above `max_width` throws there as well, like a `width` above it: the controller trusts the
+signature, and with `fit="cover"` a mistyped `height="60000"` scaled the source to cover that box before the crop —
+minutes of disk-backed processing while holding the variants-directory lock. Raise `max_width` if an output really
+needs to be taller than that.
+
 A `quality` outside 1-100 passed to the component, `image_url()` or `ImageUrlGenerator` throws an
 `InvalidArgumentException` instead of producing a URL.
 
@@ -98,10 +103,13 @@ now use the configured quality of the format (`format_quality`, then `default_qu
 
 ### PHP API
 
-`ImageComponent` and `ImageUrlExtension` take a `QualityResolver` in place of `int $defaultQuality`, and
-`ImageUrlGenerator` takes one after the `FormatNegotiator`. This matters only if you construct them yourself or
-override their service definitions: a definition that binds `$defaultQuality` no longer compiles — drop the binding
-and set `default_quality` / `format_quality` in the bundle configuration instead.
+`ImageComponent` takes a `QualityResolver` in place of `int $defaultQuality`, `ImageUrlGenerator` takes one after the
+`FormatNegotiator`, and `ImageUrlExtension` lost both `$defaultQuality` and `$maxWidth` — it delegates the argument
+checks to the new `ImageUrlGenerator::assertArguments()`. `CachePathResolver::assertHeight()` takes the maximum as its
+second argument (`assertHeight(?int $height, int $maxHeight, string $context)`). This matters only if you construct
+them yourself or override their service definitions: a definition that binds `$defaultQuality` or `$maxWidth` on the
+extension no longer compiles — drop the binding and set `default_quality` / `format_quality` / `max_width` in the
+bundle configuration instead.
 
 ## From v0.3.0 or earlier
 
@@ -157,13 +165,6 @@ Formats, URLs and responses:
 - `ImageUrlGenerator::generate()` and `generateFromRequest()` now follow the component's rules: a `height` without
   `fit` is no longer part of the URL (such URLs used to resize to the exact box and distort the image — the new URL is
   a new cache variant), and a `width` above `max_width` or below 1 throws.
-- An explicit `height` above `max_width` throws everywhere a URL is made (`<twig:Image>`, `image_url()`,
-  `ImageUrlGenerator`), like a `width` above it: the controller trusts the signature, and with `fit="cover"` a mistyped
-  `height="60000"` scaled the source to cover that box before the crop — minutes of disk-backed processing while
-  holding the variants-directory lock. Raise `max_width` if an output really needs to be taller than that.
-- `CachePathResolver::assertHeight()` takes the maximum as its second argument (`assertHeight(?int $height, int
-  $maxHeight, string $context)`); `ImageUrlGenerator::assertArguments()` is new and `ImageUrlExtension`'s constructor
-  lost its `QualityResolver` and `$maxWidth` arguments — relevant only if you construct these services yourself.
 - A leading slash in `src` is dropped like `@default/`, so `/photo.jpg` and `photo.jpg` share one URL; a `src` with a
   leading slash used to produce `/_image//…` URLs.
 - If a custom `ImageSourceInterface` enforced per-image authorization in `exists()`, move it in front of the route —
