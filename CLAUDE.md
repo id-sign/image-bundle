@@ -607,8 +607,10 @@ not serve and, when `$format` is `null`, picks one it does — see Format resolu
 the `<twig:Image>` component which generates a full `<picture>` tag). Useful for og tags, emails, JSON-LD, or any
 context where a single URL is needed.
 
-**Parameters:** `src`, `width`, `height`, `fit`, `quality`, `format`, `watermark`, `autoDimensions` — mirrors the
-component props.
+**Parameters:** `src`, `width`, `height`, `fit`, `quality`, `format`, `watermark`, `autoDimensions`, `lossless` —
+mirrors the component props. `width`, `height`, `fit` and `quality` are checked through
+`ImageUrlGenerator::assertArguments()` before the metadata I/O (see Height semantics); the extension holds no
+`max_width` or `QualityResolver` of its own.
 
 **Format resolution:**
 
