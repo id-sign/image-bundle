@@ -205,8 +205,9 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
             return;
         }
 
+        // Silenced: a file removed by a concurrent purge between is_file() and unlink() is already what we wanted.
         if (is_file($absolutePath)) {
-            unlink($absolutePath);
+            @unlink($absolutePath);
         }
     }
 
@@ -254,22 +255,36 @@ class LocalFilesystemCacheStorage implements CacheStorageInterface
      * invalidations (deleteBySource() during an encode deleted nothing) and deleted nothing at all on NFS, where
      * flock() on a directory always fails. rmdir() failures are deliberately ignored: a concurrent request may have
      * written a fresh variant into a directory after its old files were unlinked, and that directory must stay.
+     *
+     * Every step tolerates an entry that vanished between listing and deletion — a writer renaming its staging file,
+     * a second purge, deleteBySource() from the application: under Symfony's ErrorHandler the warning of a bare
+     * unlink() or of RecursiveDirectoryIterator descending into a removed directory is an exception that would abort
+     * the purge halfway and leave every later directory with its stale variants.
      */
     private function deleteContents(string $dir): int
     {
-        $count = 0;
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST,
-        );
+        $entries = @scandir($dir, \SCANDIR_SORT_NONE);
 
-        /** @var \SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if ($file->isFile()) {
-                unlink($file->getPathname());
+        if (false === $entries) {
+            // Removed concurrently; nothing left to delete here.
+            return 0;
+        }
+
+        $count = 0;
+
+        foreach ($entries as $entry) {
+            if ('.' === $entry || '..' === $entry) {
+                continue;
+            }
+
+            $path = $dir.'/'.$entry;
+
+            if (is_dir($path) && !is_link($path)) {
+                $count += $this->deleteContents($path);
+                @rmdir($path);
+            } elseif (@unlink($path)) {
+                // A failed unlink is a file another process removed first: not ours to count.
                 ++$count;
-            } elseif ($file->isDir()) {
-                @rmdir($file->getPathname());
             }
         }
 

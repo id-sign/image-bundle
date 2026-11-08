@@ -49,10 +49,11 @@ class PurgeCacheCommand extends Command
         $accessedBefore = $input->getOption('accessed-before');
         $dryRun = !((bool) $input->getOption('force'));
 
-        // (int) "thirty" is 0: a typo would have purged every file older than now — the whole cache.
+        // (int) "thirty" is 0: a typo would have purged every file older than now — the whole cache. An explicit 0
+        // (a templated $DAYS that defaulted to empty, a guess at "no filter") means exactly the same and is refused too.
         foreach (['modified-before' => $modifiedBefore, 'accessed-before' => $accessedBefore] as $option => $days) {
-            if (null !== $days && !ctype_digit($days)) {
-                $io->error(\sprintf('--%s takes a number of days, got "%s".', $option, $days));
+            if (null !== $days && (!ctype_digit($days) || 0 === (int) $days)) {
+                $io->error(\sprintf('--%s takes a number of days, at least 1, got "%s". To purge everything, run image:purge --force without it.', $option, $days));
 
                 return Command::INVALID;
             }
@@ -105,32 +106,32 @@ class PurgeCacheCommand extends Command
         $atimeThreshold = null !== $accessedBefore ? $now - ((int) $accessedBefore * 86400) : null;
 
         $count = 0;
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($this->cacheDirectory, \FilesystemIterator::SKIP_DOTS),
-        );
 
-        /** @var \SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if (!$file->isFile()) {
+        foreach ($this->walkFiles($this->cacheDirectory) as $path) {
+            // Silenced: a staging file renamed by a writer, or a variant another purge removed, between the directory
+            // listing and the stat — under the console ErrorHandler the warning would abort the whole purge.
+            $mtime = @filemtime($path);
+            $atime = null !== $atimeThreshold ? @fileatime($path) : false;
+
+            if (false === $mtime) {
                 continue;
             }
 
-            $path = $file->getPathname();
-
-            if (null !== $mtimeThreshold && filemtime($path) >= $mtimeThreshold) {
+            if (null !== $mtimeThreshold && $mtime >= $mtimeThreshold) {
                 continue;
             }
 
-            if (null !== $atimeThreshold && fileatime($path) >= $atimeThreshold) {
+            if (null !== $atimeThreshold && (false === $atime || $atime >= $atimeThreshold)) {
                 continue;
             }
 
             if ($dryRun) {
                 $io->writeln($path);
-            } else {
-                @unlink($path);
+                ++$count;
+            } elseif (@unlink($path)) {
+                // A file removed by someone else in the meantime is not one we deleted.
+                ++$count;
             }
-            ++$count;
         }
 
         $action = $dryRun ? 'Would delete' : 'Deleted';
@@ -160,22 +161,42 @@ class PurgeCacheCommand extends Command
 
     private function countFilesRecursive(string $dir): int
     {
-        if (!is_dir($dir)) {
-            return 0;
-        }
-
         $count = 0;
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
-        );
 
-        /** @var \SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if ($file->isFile()) {
-                ++$count;
-            }
+        foreach ($this->walkFiles($dir) as $_) {
+            ++$count;
         }
 
         return $count;
+    }
+
+    /**
+     * Every file below $dir, depth first. Tolerates directories that vanish while the walk is running (a concurrent
+     * purge, the application's deleteBySource()): RecursiveDirectoryIterator throws when it descends into a removed
+     * directory, which would abort the command with a stack trace halfway through the cache.
+     *
+     * @return iterable<string> absolute paths
+     */
+    private function walkFiles(string $dir): iterable
+    {
+        $entries = @scandir($dir, \SCANDIR_SORT_NONE);
+
+        if (false === $entries) {
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            if ('.' === $entry || '..' === $entry) {
+                continue;
+            }
+
+            $path = $dir.'/'.$entry;
+
+            if (is_dir($path) && !is_link($path)) {
+                yield from $this->walkFiles($path);
+            } elseif (is_file($path)) {
+                yield $path;
+            }
+        }
     }
 }

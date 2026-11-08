@@ -33,7 +33,7 @@ are passed through unsigned and unprocessed.
 |------------------|---------------|----------|------------------------------------------------------------------------------------------------|
 | `src`            | string        | yes      | Path relative to the `default` source; `@name/path` reads from a named source (see below)      |
 | `width`          | int           | yes      | Intrinsic image width in px (not display size) — see "Picking width" below                     |
-| `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set; ≥ 1        |
+| `height`         | int           | no       | HTML attribute only (CLS prevention) — NOT used for processing unless `fit` is set; 1…`max_width` |
 | `fit`            | string        | no       | `cover` (center crop), `contain`, or `scale-down` (anything else throws) — needed for `height` to affect processing |
 | `blur`           | bool          | no       | Inline blur placeholder                                                                        |
 | `quality`        | int\|map      | no       | 1-100 for every format, or `:quality="{avif: 70, webp: 90}"` for the named formats (see below) |
@@ -175,13 +175,13 @@ id_sign_image:
             margin: 10                  # pixels from edge, ≥ 0
     auto_dimensions: false
     lossless: false                 # true lossless encoding (webp/avif only, ignored for jpeg/png)
-    max_width: 4096                 # reject component width above this
+    max_width: 4096                 # reject a width or an explicit height above this
     max_source_bytes: 20971520      # 20 MiB; 0 disables the check
     max_source_pixels: 64000000     # 64 MP (width × height from the header); 0 disables the check
     file_permissions: 0o660         # owner rw (null = umask); YAML reads 0660 as a string; from env decimal (432)
     directory_permissions: 0o770    # cache directories, owner rwx
     serve_mode: 'public'
-    route_prefix: '/_image'         # leading "/", no trailing "/"; the route and default cache.path follow it
+    route_prefix: '/_image'         # leading "/", no trailing "/"; the route and default cache.path follow it; a %parameter% works, %env()% does not
 ```
 
 ### Image sources
@@ -336,6 +336,8 @@ php bin/console image:purge --modified-before=30 --force       # older than 30 d
 php bin/console image:purge --accessed-before=14 --force       # not accessed in 14 days
 ```
 
+Both age options take whole days ≥ 1 (`0` is refused: it would mean the whole cache).
+
 The cache directory (`cache.path`, default `public` + `route_prefix`) belongs to the bundle: purge and
 `deleteBySource()` delete everything below it, files of your own included. Pick a `route_prefix` whose directory
 nothing else uses; a cache directory that is a source directory or contains one fails the build.
@@ -379,7 +381,7 @@ $url = $imageUrlGenerator->generateFromRequest($request, 'uploads/photo.jpg', 80
 $url = $imageUrlGenerator->generate('uploads/photo.jpg', 800, 600, 'cover', 80, 'webp');
 ```
 
-Same rules as the component: `width` must be 1…`max_width`, `height` is used only together with `fit` (without `fit`
+Same rules as the component: `width` and `height` must be 1…`max_width`, `height` is used only together with `fit` (without `fit`
 the server resizes by `width` and keeps the aspect ratio), an unservable `format` throws, `quality` takes an int or a
 map and, omitted, is the configured quality of the resulting format. `scale-down` keeps the requested `width` here (the
 component replaces it with the source dimensions).
@@ -398,9 +400,9 @@ Call it whenever a source image is replaced or deleted — cached variants are s
 
 ## Upgrading from v0.4.0 or earlier
 
-See "From v0.4.0 or earlier" in the bundle's UPGRADE.md. In short: a `height` below 1 throws like an unknown `fit`; with
-a custom `route_prefix` the default cache directory is `public/<route_prefix>`, which purge empties — it must hold
-nothing else; a `fit` other than `cover`/`contain`/`scale-down` throws (it used to render URLs answering 400); a signed
+See "From v0.4.0 or earlier" in the bundle's UPGRADE.md. In short: a `height` below 1 or above `max_width` throws like
+an unknown `fit`; with a custom `route_prefix` the default cache directory is `public/<route_prefix>`, which purge
+empties — it must hold nothing else (a source or a watermark inside it fails the build); a `fit` other than `cover`/`contain`/`scale-down` throws (it used to render URLs answering 400); a signed
 URL with a leading zero in a number (`_0800_`) no longer verifies (it used to yield unlimited variants per URL) and
 answers 400; `ImageUrlGenerator` without `quality` now uses the configured quality of the format instead of a hard-coded
 `80` (URLs change only when `default_quality` is not 80 or `format_quality` is set), a quality outside 1-100 — in

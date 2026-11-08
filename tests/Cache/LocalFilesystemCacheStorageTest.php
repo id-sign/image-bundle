@@ -79,6 +79,45 @@ class LocalFilesystemCacheStorageTest extends TestCase
     }
 
     /**
+     * The purge takes no locks, so it races writers: a staging file renamed between the directory listing and
+     * unlink() must neither abort the purge (under Symfony's ErrorHandler the warning is an exception) nor be counted.
+     * Stood in for by a file the purge may not delete.
+     */
+    public function testPurgeSurvivesAFileItCannotDeleteAndDoesNotCountIt(): void
+    {
+        if (0 === posix_geteuid()) {
+            self::markTestSkipped('root deletes from a read-only directory');
+        }
+
+        $this->createCacheFile('a/1.avif');
+        $this->createCacheFile('b/2.webp');
+        $this->createCacheFile('b/c/3.webp');
+        chmod($this->cacheDir.'/a', 0o555);
+        // Like Symfony's ErrorHandler: every warning is an exception, except one the code silenced with "@" — which
+        // the handler sees as a reduced error_reporting(). PHPUnit runs tests without E_WARNING in that level.
+        $previousLevel = error_reporting(\E_ALL);
+        set_error_handler(static function (int $severity, string $message): bool {
+            if (0 === (error_reporting() & $severity)) {
+                return false;
+            }
+
+            throw new \ErrorException($message, 0, $severity);
+        });
+
+        try {
+            $count = $this->storage->purgeAll();
+        } finally {
+            restore_error_handler();
+            error_reporting($previousLevel);
+            chmod($this->cacheDir.'/a', 0o775);
+        }
+
+        self::assertSame(2, $count);
+        self::assertFileExists($this->cacheDir.'/a/1.avif');
+        self::assertDirectoryDoesNotExist($this->cacheDir.'/b');
+    }
+
+    /**
      * A purge (here: another process holding the lock) removes the directory while a request waits for its lock; the
      * request must write into the directory that exists afterwards, not into the removed one.
      */
@@ -92,6 +131,11 @@ class LocalFilesystemCacheStorageTest extends TestCase
         $ready = $this->cacheDir.'.ready';
         $pid = pcntl_fork();
 
+        if (-1 === $pid) {
+            // Treating -1 as the parent would spin on $ready forever: no child ever touches it.
+            self::markTestSkipped('pcntl_fork() failed (process limit, seccomp)');
+        }
+
         if (0 === $pid) {
             $lock = fopen($this->cacheDir.'/photo.jpg', 'r');
             flock($lock, \LOCK_EX);
@@ -102,7 +146,12 @@ class LocalFilesystemCacheStorageTest extends TestCase
             exit(0);
         }
 
+        $deadline = microtime(true) + 5;
         while (!file_exists($ready)) {
+            if (microtime(true) > $deadline) {
+                pcntl_waitpid($pid, $status);
+                self::fail('The child process did not take the lock within 5 s.');
+            }
             usleep(10_000);
         }
         unlink($ready);

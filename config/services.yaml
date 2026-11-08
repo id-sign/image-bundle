@@ -98,7 +98,6 @@ services:
         arguments:
             $defaultWatermark: '%id_sign_image.default_watermark%'
             $globalAutoDimensions: '%id_sign_image.auto_dimensions%'
-            $maxWidth: '%id_sign_image.max_width%'
             $globalLossless: '%id_sign_image.lossless%'
 
     # Command

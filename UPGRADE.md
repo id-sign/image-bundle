@@ -33,9 +33,11 @@ These used to pass and break only when an image was rendered or requested:
   read/write/execute (directories). Write `0o660`: `660` is decimal, and the `0660` of earlier READMEs is a string in
   YAML and never built.
 - A `route_prefix` that does not start with `/`, ends with one, has a `.` or `..` segment or characters other than
-  letters, digits and `._~-`.
+  letters, digits and `._~-`. A `%parameter%` is resolved first and its value is what has to pass.
 - A cache directory (`cache.path`, or the new default `public/<route_prefix>`) that is a source directory or contains
-  one — `image:purge` empties the cache directory and would delete the source images.
+  one — `image:purge` empties the cache directory and would delete the source images — or that holds a watermark
+  `path`, which the first purge would delete (500 for every watermarked variant afterwards). `//`, `/./` and `/../`
+  segments are folded before the comparison, so `public/images/../_image/uploads` counts as inside `public/_image`.
 
 ### Configuration merging and environment variables
 
@@ -58,8 +60,14 @@ both fixed when the container is built, so an `%env()%` value fails the build wi
 
 ### `image:purge`
 
-`--modified-before` and `--accessed-before` take a whole number of days; anything else fails with an error. A value
-such as `thirty` used to count as 0 days and purged the whole cache.
+`--modified-before` and `--accessed-before` take a whole number of days, at least 1; anything else fails with an
+error. A value such as `thirty` used to count as 0 days and purged the whole cache — and `0` itself means the same, so
+it is refused too (run `image:purge --force` without the option to purge everything).
+
+A purge no longer aborts when a file or directory vanishes while it runs (a request renaming its staging file, a second
+purge, the application's `deleteBySource()`): under Symfony's ErrorHandler the warning became an exception that left
+the rest of the cache untouched — in public mode stale variants served forever. A file the purge cannot delete is no
+longer counted in "Deleted N cached file(s)".
 
 ### Route and cache directory
 
@@ -149,6 +157,13 @@ Formats, URLs and responses:
 - `ImageUrlGenerator::generate()` and `generateFromRequest()` now follow the component's rules: a `height` without
   `fit` is no longer part of the URL (such URLs used to resize to the exact box and distort the image — the new URL is
   a new cache variant), and a `width` above `max_width` or below 1 throws.
+- An explicit `height` above `max_width` throws everywhere a URL is made (`<twig:Image>`, `image_url()`,
+  `ImageUrlGenerator`), like a `width` above it: the controller trusts the signature, and with `fit="cover"` a mistyped
+  `height="60000"` scaled the source to cover that box before the crop — minutes of disk-backed processing while
+  holding the variants-directory lock. Raise `max_width` if an output really needs to be taller than that.
+- `CachePathResolver::assertHeight()` takes the maximum as its second argument (`assertHeight(?int $height, int
+  $maxHeight, string $context)`); `ImageUrlGenerator::assertArguments()` is new and `ImageUrlExtension`'s constructor
+  lost its `QualityResolver` and `$maxWidth` arguments — relevant only if you construct these services yourself.
 - A leading slash in `src` is dropped like `@default/`, so `/photo.jpg` and `photo.jpg` share one URL; a `src` with a
   leading slash used to produce `/_image//…` URLs.
 - If a custom `ImageSourceInterface` enforced per-image authorization in `exists()`, move it in front of the route —

@@ -108,7 +108,7 @@ id_sign_image:
     lossless: false
 
     # Safety limits — protect against memory exhaustion and decompression bombs
-    max_width: 4096                 # Reject component width above this (pixels)
+    max_width: 4096                 # Reject a width or an explicit height above this (pixels)
     max_source_bytes: 20971520      # Reject source files above this (bytes). 0 disables.
     max_source_pixels: 64000000     # Reject source images above this many pixels (width × height). 0 disables.
 
@@ -233,7 +233,7 @@ Pixelmator, Affinity; iPhone HEIC embeds a profile and is converted).
 |------------------|---------------|----------|------------------------------------------------------------------------------|
 | `src`            | string        | yes      | Source path, optionally `@source/`-prefixed (see [Image sources](#image-sources)) |
 | `width`          | int           | yes      | Intrinsic image width in px (not display size) — required, see below         |
-| `height`         | int           | no       | Display height (auto-calculated if `auto_dimensions` enabled)                |
+| `height`         | int           | no       | Display height, 1…`max_width` (auto-calculated if `auto_dimensions` enabled) |
 | `fit`            | string        | no       | Resize mode: `cover`, `contain`, or `scale-down`                             |
 | `blur`           | bool          | no       | Show blur placeholder (overrides global setting)                             |
 | `quality`        | int\|map      | no       | Output quality 1-100, or a `{format: quality}` map (see [`quality`](#quality)) |
@@ -490,13 +490,17 @@ The bundle route takes its path from `route_prefix` (`'%id_sign_image.route_pref
 default `cache.path` follows too (`%kernel.project_dir%/public/media/images`), so in public mode the web server finds
 the cached files under the URL path. If you set `cache.path` yourself in public mode, it has to be the document root
 plus `route_prefix`. The web server snippets, `access_control` rules and nginx locations in this README use the default
-`/_image` — replace it with your prefix.
+`/_image` — replace it with your prefix. A container parameter works (`route_prefix: '%app.images_prefix%'`, shared
+with `access_control` or a web server template) and is validated by its value; an `%env()%` value does not, because
+the route path and the default cache directory are fixed when the container is built.
 
 **Pick a prefix whose directory belongs to the bundle alone.** The cache directory — by default the document root plus
 `route_prefix` — is emptied by `image:purge` (see [Cache management](#cache-management)), files of your own in it
 included. `route_prefix: /images` over a `public/images/` that holds your static images loses them on the first purge.
 A configuration in which the cache directory is a source directory or contains one
-(`sources.default: '%kernel.project_dir%/public/images'` with `route_prefix: /images`) fails the container build.
+(`sources.default: '%kernel.project_dir%/public/images'` with `route_prefix: /images`) fails the container build, and
+so does a watermark `path` inside the cache directory — the first purge would delete it and every watermarked variant
+would answer 500.
 
 ### Restricting access to authenticated users
 
@@ -875,7 +879,8 @@ php bin/console image:purge --accessed-before=14 --force
 php bin/console image:purge --modified-before=30 --accessed-before=14 --force
 ```
 
-Both options take a whole number of days.
+Both options take a whole number of days, at least 1 — `0` would mean "older than now", i.e. the whole cache; for
+that, run `image:purge --force` without them.
 
 ### Programmatic cache invalidation
 
@@ -925,8 +930,9 @@ class ImageApiController
 }
 ```
 
-Both methods follow the rules of `<twig:Image>`: `width` must be between 1 and `max_width` (an
-`InvalidArgumentException` otherwise — the controller trusts the signature, so the cap sits where URLs are made),
+Both methods follow the rules of `<twig:Image>`: `width` and `height` must be between 1 and `max_width` (an
+`InvalidArgumentException` otherwise — the controller trusts the signature, so the cap sits where URLs are made; with
+`fit="cover"` a mistyped `height` of 60000 would scale the source to cover that box before cropping),
 `height` is a processing dimension only together with `fit` (without `fit` the server resizes by `width` and keeps the
 aspect ratio), and a `format` the controller would not serve throws. `quality` takes an int or a `{format: quality}`
 map like the component attribute; omitted, it is the configured quality of the resulting format (`format_quality`,
